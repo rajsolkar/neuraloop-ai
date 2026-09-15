@@ -1,0 +1,111 @@
+// Prisma schema for Neuraloop Phase 2, Phase 6, Phase 7 & Phase 7.1 (Neon PostgreSQL backend)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Workflow {
+  id                     String               @id
+  name                   String
+  description            String               @default("")
+  status                 String               @default("draft") // draft, published, archived
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  savedAt                DateTime?
+  publishedAt            DateTime?
+  currentVersionId       String?
+  publishedVersionId     String?
+  publishedVersionNumber Int?
+  activeVersionId        String?
+  activeVersionNumber    Int?
+  webhookSecret          String?
+  versions               WorkflowVersion[]
+  executions             WorkflowExecution[]
+  generations            WorkflowGeneration[]
+
+  @@map("workflows")
+}
+
+model WorkflowVersion {
+  id          String              @id
+  workflowId  String
+  version     Int
+  definition  Json
+  publishedAt DateTime?
+  isActive    Boolean             @default(false)
+  comment     String?
+  createdAt   DateTime            @default(now())
+  workflow    Workflow            @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  executions  WorkflowExecution[]
+
+  @@unique([workflowId, version])
+  @@index([workflowId])
+  @@map("workflow_versions")
+}
+
+model WorkflowExecution {
+  id                String          @id @default(uuid())
+  workflowId        String
+  workflowVersionId String
+  status            String          @default("queued") // queued, running, success, failed, cancelled
+  source            String          @default("manual") // manual, webhook, schedule, api
+  startedAt         DateTime        @default(now())
+  completedAt       DateTime?
+  duration          Int?            // in milliseconds
+  input             Json?
+  output            Json?
+  error             String?
+  metadata          Json?
+  triggerMetadata   Json?
+  workflow          Workflow        @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  version           WorkflowVersion @relation(fields: [workflowVersionId], references: [id], onDelete: Cascade)
+  nodeExecutions    NodeExecution[]
+
+  @@index([workflowId])
+  @@index([workflowVersionId])
+  @@index([status])
+  @@index([source])
+  @@index([startedAt])
+  @@map("workflow_executions")
+}
+
+model NodeExecution {
+  id          String            @id @default(uuid())
+  executionId String
+  nodeId      String
+  nodeType    String
+  status      String            @default("pending") // pending, running, success, failed, skipped, cancelled
+  startedAt   DateTime          @default(now())
+  completedAt DateTime?
+  duration    Int?              // in milliseconds
+  input       Json?
+  output      Json?
+  error       String?
+  attempt     Int               @default(1)
+  execution   WorkflowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId])
+  @@index([nodeId])
+  @@index([status])
+  @@map("node_executions")
+}
+
+model WorkflowGeneration {
+  id         String    @id @default(uuid())
+  prompt     String    @db.Text
+  workflowId String?
+  status     String    // success, failed, rejected
+  error      String?   @db.Text
+  tokensUsed Int?
+  createdAt  DateTime  @default(now())
+  workflow   Workflow? @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+
+  @@index([workflowId])
+  @@index([createdAt])
+  @@map("workflow_generations")
+}
