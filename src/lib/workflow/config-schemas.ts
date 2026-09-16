@@ -84,6 +84,8 @@ export type EmailConfig = z.infer<typeof EmailConfigSchema>;
 // Schedule Config
 export const ScheduleFrequencySchema = z.enum([
   "cron",
+  "custom",
+  "every_minute",
   "hourly",
   "daily",
   "weekly",

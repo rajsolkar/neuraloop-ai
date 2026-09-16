@@ -338,6 +338,12 @@ function EmailForm({
 // ------------------------------------------------------------------
 // 5. Schedule Form
 // ------------------------------------------------------------------
+import {
+  presetToCron,
+  formatCronHumanReadable,
+  getNextNRunDates,
+} from "@/lib/scheduler/cron-parser-utils";
+
 function ScheduleForm({
   config,
   onChange,
@@ -346,44 +352,51 @@ function ScheduleForm({
   onChange: (patch: Record<string, unknown>) => void;
 }) {
   const frequency = config.frequency ?? "daily";
-  const cronExpression = config.cronExpression ?? "0 8 * * *";
+  const customCron = config.cronExpression ?? "0 8 * * *";
   const time = config.time ?? "08:00";
   const timezone = config.timezone ?? "UTC";
 
+  const effectiveCron = presetToCron(frequency, customCron, time);
+  const humanReadable = formatCronHumanReadable(effectiveCron);
+  const upcomingRuns = getNextNRunDates(effectiveCron, 3, timezone);
+
   return (
     <div className="flex flex-col gap-3.5">
-      <FormField label="Frequency">
+      <FormField label="Frequency Preset">
         <FormSelect
           value={frequency}
           onChange={(val) => onChange({ ...config, frequency: val })}
           options={[
-            { value: "hourly", label: "Every Hour" },
+            { value: "every_minute", label: "Every Minute (* * * * *)" },
+            { value: "hourly", label: "Every Hour (0 * * * *)" },
             { value: "daily", label: "Every Day" },
-            { value: "weekly", label: "Every Week" },
-            { value: "monthly", label: "Every Month" },
+            { value: "weekly", label: "Every Week (Sundays)" },
+            { value: "monthly", label: "Every Month (1st of month)" },
             { value: "cron", label: "Custom Cron Expression" },
           ]}
         />
       </FormField>
 
-      {frequency === "cron" ? (
-        <FormField label="Cron Expression" description="Standard 5-field cron syntax">
+      {frequency === "cron" || frequency === "custom" ? (
+        <FormField label="Cron Expression" description="Standard 5-part cron syntax (minute hour day month day-of-week)">
           <Input
             placeholder="0 8 * * *"
-            value={cronExpression}
+            value={customCron}
             onChange={(e) => onChange({ ...config, cronExpression: e.target.value })}
             className="font-mono text-xs"
           />
         </FormField>
       ) : (
-        <FormField label="Trigger Time">
-          <Input
-            type="time"
-            value={time}
-            onChange={(e) => onChange({ ...config, time: e.target.value })}
-            className="text-xs"
-          />
-        </FormField>
+        frequency !== "every_minute" && frequency !== "hourly" && (
+          <FormField label="Trigger Time">
+            <Input
+              type="time"
+              value={time}
+              onChange={(e) => onChange({ ...config, time: e.target.value })}
+              className="text-xs"
+            />
+          </FormField>
+        )
       )}
 
       <FormField label="Timezone">
@@ -391,14 +404,42 @@ function ScheduleForm({
           value={timezone}
           onChange={(val) => onChange({ ...config, timezone: val })}
           options={[
-            { value: "UTC", label: "UTC" },
-            { value: "America/New_York", label: "Eastern Time (US)" },
-            { value: "America/Los_Angeles", label: "Pacific Time (US)" },
-            { value: "Europe/London", label: "London (GMT)" },
-            { value: "Asia/Kolkata", label: "India (IST)" },
+            { value: "UTC", label: "UTC (Coordinated Universal Time)" },
+            { value: "America/New_York", label: "Eastern Time (US & Canada)" },
+            { value: "America/Chicago", label: "Central Time (US & Canada)" },
+            { value: "America/Los_Angeles", label: "Pacific Time (US & Canada)" },
+            { value: "Europe/London", label: "London / GMT" },
+            { value: "Europe/Paris", label: "Paris / Berlin (CET)" },
+            { value: "Asia/Kolkata", label: "India Standard Time (IST)" },
+            { value: "Asia/Tokyo", label: "Japan Standard Time (JST)" },
+            { value: "Australia/Sydney", label: "Australian Eastern Time (AEST)" },
           ]}
         />
       </FormField>
+
+      {/* Human-Readable Schedule Preview Box */}
+      <div className="rounded-md border border-border/80 bg-canvas-subtle p-3 text-xs flex flex-col gap-1.5">
+        <div className="flex items-center gap-1.5 font-medium text-ink">
+          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+          <span>{humanReadable}</span>
+        </div>
+        <div className="text-[11px] font-mono text-ink-muted">
+          Cron: {effectiveCron} ({timezone})
+        </div>
+
+        {upcomingRuns.length > 0 && (
+          <div className="mt-1 pt-2 border-t border-border/60 flex flex-col gap-1">
+            <div className="text-[10px] uppercase tracking-wider font-semibold text-ink-faint">
+              Upcoming Scheduled Runs:
+            </div>
+            {upcomingRuns.map((runDate, idx) => (
+              <div key={idx} className="text-[11px] font-mono text-ink-soft">
+                #{idx + 1}: {runDate.toISOString().replace("T", " ").substring(0, 19)} UTC
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

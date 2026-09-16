@@ -14,6 +14,8 @@ import { validateWorkflowForPublish } from "./publish-validation";
 import { WorkflowService } from "./workflow-service";
 import { computeVersionDiff } from "./version-diff";
 
+import { SchedulerService } from "@/lib/scheduler/scheduler-service";
+
 // In-memory fallback version store for non-DB / testing environments
 const inMemoryVersionsMap = new Map<string, WorkflowVersionRecord[]>();
 
@@ -231,6 +233,13 @@ export class PublishService {
       nodes: clean.nodes,
       edges: clean.edges,
     });
+
+    // Sync database schedule trigger definitions
+    try {
+      await SchedulerService.syncWorkflowSchedule(id, userId, clean.nodes);
+    } catch (err) {
+      console.warn("Schedule sync warning on publish:", err);
+    }
 
     const activeNum = shouldActivate ? nextVersionNumber : workflow.activeVersionNumber || nextVersionNumber;
 
