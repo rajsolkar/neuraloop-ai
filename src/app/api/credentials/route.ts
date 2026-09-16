@@ -4,7 +4,7 @@ import { CredentialService } from "@/lib/security/credential-service";
 import { limitAuthSensitiveRoute, createRateLimitResponse } from "@/lib/security/rate-limit";
 
 export async function GET(request: Request) {
-  const { userId, errorResponse } = await requireAuthUser();
+  const { userId, orgId, errorResponse } = await requireAuthUser();
   if (errorResponse) return errorResponse;
 
   const rateLimitResult = await limitAuthSensitiveRoute(request, userId);
@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const credentials = await CredentialService.listCredentials(userId);
+    const credentials = await CredentialService.listCredentials(userId, orgId);
     return NextResponse.json({ credentials }, { status: 200 });
   } catch (error) {
     console.error("GET /api/credentials error:", error);
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const { userId, errorResponse } = await requireAuthUser();
+  const { userId, orgId, orgRole, errorResponse } = await requireAuthUser();
   if (errorResponse) return errorResponse;
 
   const rateLimitResult = await limitAuthSensitiveRoute(request, userId);
@@ -42,12 +42,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const credential = await CredentialService.createCredential(userId, {
-      name: body.name,
-      provider: body.provider,
-      value: body.value,
-      metadata: body.metadata,
-    });
+    const credential = await CredentialService.createCredential(
+      userId,
+      {
+        name: body.name,
+        provider: body.provider,
+        value: body.value,
+        metadata: body.metadata,
+      },
+      orgId,
+      orgRole,
+    );
 
     return NextResponse.json({ credential }, { status: 201 });
   } catch (error) {

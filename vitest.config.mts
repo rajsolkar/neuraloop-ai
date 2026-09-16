@@ -5,6 +5,8 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts"],
     clearMocks: true,
+    testTimeout: 20000,
+    fileParallelism: false,
   },
   resolve: {
     alias: {

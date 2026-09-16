@@ -19,7 +19,7 @@ function mockContext(): ExecutionContext {
 }
 
 describe("Phase 4 Node Executors & SSRF Protection", () => {
-  it("registers executors for all 10 node definitions", () => {
+  it("registers executors for all 13 node definitions", () => {
     const nodeDefs = [
       "manual-trigger",
       "webhook",
@@ -28,8 +28,11 @@ describe("Phase 4 Node Executors & SSRF Protection", () => {
       "openai",
       "slack",
       "email",
+      "code",
+      "webhook-response",
       "if",
       "filter",
+      "set-variable",
       "delay",
     ];
 
@@ -128,25 +131,100 @@ describe("Phase 4 Node Executors & SSRF Protection", () => {
     });
   });
 
-  describe("Credential Guarded Executors", () => {
-    it("returns CREDENTIAL_NOT_CONFIGURED error when server keys are missing", async () => {
-      const openaiExec = getExecutor("openai")!;
-      const slackExec = getExecutor("slack")!;
-      const emailExec = getExecutor("email")!;
+  describe("Set Variable Executor", () => {
+    it("evaluates key-value variable templates and sets variable outputs", async () => {
+      const executor = getExecutor("set-variable")!;
+      const node = createWorkflowNode("set-variable", { x: 0, y: 0 });
+      node.data.config = {
+        variables: [
+          { key: "userName", value: "{{input.lead.name}}" },
+          { key: "customScore", value: "{{input.lead.score}}" },
+        ],
+      };
 
       const ctx = mockContext();
+      const result = await executor.execute(node, {}, ctx);
 
-      const openaiRes = await openaiExec.execute(createWorkflowNode("openai", { x: 0, y: 0 }), {}, ctx);
-      expect(openaiRes.status).toBe("failed");
-      expect(openaiRes.error).toContain("CREDENTIAL_NOT_CONFIGURED");
+      expect(result.status).toBe("success");
+      expect(result.output?.userName).toBe("Raj");
+      expect(result.output?.customScore).toBe("95");
+      expect(result.output?.variables).toEqual({
+        userName: "Raj",
+        customScore: "95",
+      });
+    });
+  });
 
-      const slackRes = await slackExec.execute(createWorkflowNode("slack", { x: 0, y: 0 }), {}, ctx);
-      expect(slackRes.status).toBe("failed");
-      expect(slackRes.error).toContain("CREDENTIAL_NOT_CONFIGURED");
+  describe("Code Executor", () => {
+    it("executes custom JavaScript code snippet with injected context", async () => {
+      const executor = getExecutor("code")!;
+      const node = createWorkflowNode("code", { x: 0, y: 0 });
+      node.data.config = {
+        code: "return { doubleScore: input.lead.score * 2, greeting: 'Hello ' + input.lead.name };",
+      };
 
-      const emailRes = await emailExec.execute(createWorkflowNode("email", { x: 0, y: 0 }), {}, ctx);
-      expect(emailRes.status).toBe("failed");
-      expect(emailRes.error).toContain("CREDENTIAL_NOT_CONFIGURED");
+      const ctx = mockContext();
+      const result = await executor.execute(node, {}, ctx);
+
+      expect(result.status).toBe("success");
+      expect(result.output?.doubleScore).toBe(190);
+      expect(result.output?.greeting).toBe("Hello Raj");
+    });
+  });
+
+  describe("Webhook Response Executor", () => {
+    it("formats custom HTTP status code, headers, and body payload", async () => {
+      const executor = getExecutor("webhook-response")!;
+      const node = createWorkflowNode("webhook-response", { x: 0, y: 0 });
+      node.data.config = {
+        statusCode: 201,
+        headers: [{ key: "X-Lead-Name", value: "{{input.lead.name}}" }],
+        bodyType: "json",
+        body: '{"status": "created", "score": {{input.lead.score}}}',
+      };
+
+      const ctx = mockContext();
+      const result = await executor.execute(node, {}, ctx);
+
+      expect(result.status).toBe("success");
+      expect(result.output?.statusCode).toBe(201);
+      expect(result.output?.headers).toEqual({ "X-Lead-Name": "Raj" });
+      expect(result.output?.body).toEqual({ status: "created", score: 95 });
+    });
+  });
+
+  describe("Credential Guarded Executors", () => {
+    it("returns CREDENTIAL_NOT_CONFIGURED error when server keys are missing", async () => {
+      const origOpenAi = process.env.OPENAI_API_KEY;
+      const origSlack = process.env.SLACK_BOT_TOKEN;
+      const origSmtp = process.env.SMTP_HOST;
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.SLACK_BOT_TOKEN;
+      delete process.env.SMTP_HOST;
+
+      try {
+        const openaiExec = getExecutor("openai")!;
+        const slackExec = getExecutor("slack")!;
+        const emailExec = getExecutor("email")!;
+
+        const ctx = mockContext();
+
+        const openaiRes = await openaiExec.execute(createWorkflowNode("openai", { x: 0, y: 0 }), {}, ctx);
+        expect(openaiRes.status).toBe("failed");
+        expect(openaiRes.error).toContain("CREDENTIAL_NOT_CONFIGURED");
+
+        const slackRes = await slackExec.execute(createWorkflowNode("slack", { x: 0, y: 0 }), {}, ctx);
+        expect(slackRes.status).toBe("failed");
+        expect(slackRes.error).toContain("CREDENTIAL_NOT_CONFIGURED");
+
+        const emailRes = await emailExec.execute(createWorkflowNode("email", { x: 0, y: 0 }), {}, ctx);
+        expect(emailRes.status).toBe("failed");
+        expect(emailRes.error).toContain("CREDENTIAL_NOT_CONFIGURED");
+      } finally {
+        if (origOpenAi) process.env.OPENAI_API_KEY = origOpenAi;
+        if (origSlack) process.env.SLACK_BOT_TOKEN = origSlack;
+        if (origSmtp) process.env.SMTP_HOST = origSmtp;
+      }
     });
   });
 });

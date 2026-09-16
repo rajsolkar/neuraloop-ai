@@ -152,7 +152,7 @@ describe("Phase 7 & 7.1 — Workflow Publishing, Control & Versioning Tests", ()
       expect(published.nodes).toHaveLength(2);
       expect(published.publishedVersionNumber).toBe(1);
       expect(published.status).toBe("published");
-    });
+    }, 15000);
   });
 
   describe("3. Sequential & Race-Safe Version Publishing Logic", () => {

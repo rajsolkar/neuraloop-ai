@@ -133,11 +133,14 @@ export const WorkflowDefinitionSchema = z
     }
   });
 
+export const WorkflowVisibilitySchema = z.enum(["private", "workspace"]);
+
 export const CreateWorkflowInputSchema = z.object({
   id: z.string().optional(),
   name: z.string().trim().optional(),
   description: z.string().trim().optional(),
   status: WorkflowStatusSchema.optional(),
+  visibility: WorkflowVisibilitySchema.optional(),
   nodes: z.array(WorkflowNodeSchema).optional(),
   edges: z.array(WorkflowEdgeSchema).optional(),
 });
@@ -146,6 +149,7 @@ export const UpdateWorkflowInputSchema = z.object({
   name: z.string().trim().optional(),
   description: z.string().trim().optional(),
   status: WorkflowStatusSchema.optional(),
+  visibility: WorkflowVisibilitySchema.optional(),
   nodes: z.array(WorkflowNodeSchema).optional(),
   edges: z.array(WorkflowEdgeSchema).optional(),
   createVersion: z.boolean().optional(),

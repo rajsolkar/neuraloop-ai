@@ -16,6 +16,8 @@ export interface WorkflowNodeData {
   description: string;
   /** Category derived from the definition (used for styling). */
   category: NodeCategory;
+  /** Last execution status for canvas visual feedback. */
+  lastExecutionStatus?: "pending" | "running" | "success" | "failed" | "skipped" | "cancelled" | null;
   [key: string]: unknown;
 }
 
@@ -26,9 +28,12 @@ export type WorkflowEdge = Edge;
 /** Canonical, serializable workflow representation (Phase 2, Phase 7 & 7.1 compatible). */
 export interface Workflow {
   id: string;
+  userId?: string | null;
+  organizationId?: string | null;
   name: string;
   description: string;
   status: WorkflowStatus;
+  visibility?: "private" | "workspace";
   createdAt: string;
   updatedAt: string;
   /** Last time the workflow content was committed to the collection. */

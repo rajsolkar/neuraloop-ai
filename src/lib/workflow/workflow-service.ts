@@ -94,11 +94,24 @@ function seedInMemoryWorkflowsIfEmpty() {
   memoryWorkflows.set(w2.id, w2);
 }
 
+import { AuditLogService } from "@/lib/security/audit-log-service";
+
 export class WorkflowService {
-  static async listWorkflows(userId?: string | null): Promise<Workflow[]> {
+  static async listWorkflows(userId?: string | null, orgId?: string | null): Promise<Workflow[]> {
     if (isDatabaseConfigured()) {
       try {
-        const whereClause = userId ? { OR: [{ userId }, { userId: null }] } : {};
+        let whereClause: Prisma.WorkflowWhereInput = {};
+        if (orgId) {
+          whereClause = {
+            organizationId: orgId,
+            OR: [
+              { visibility: "workspace" },
+              { userId: userId ?? undefined },
+            ],
+          };
+        } else if (userId) {
+          whereClause = { OR: [{ userId }, { userId: null }] };
+        }
 
         const records = await prisma.workflow.findMany({
           where: whereClause,
@@ -117,9 +130,12 @@ export class WorkflowService {
           const clean = sanitizeGraph({ nodes: definition.nodes ?? [], edges: definition.edges ?? [] });
           return {
             id: item.id,
+            userId: item.userId,
+            organizationId: item.organizationId,
             name: item.name,
             description: item.description,
             status: item.status as WorkflowStatus,
+            visibility: (item.visibility as "private" | "workspace") || "workspace",
             createdAt: item.createdAt.toISOString(),
             updatedAt: item.updatedAt.toISOString(),
             savedAt: item.savedAt ? item.savedAt.toISOString() : null,
@@ -143,7 +159,11 @@ export class WorkflowService {
     );
   }
 
-  static async createWorkflow(rawInput?: unknown, userId?: string | null): Promise<Workflow> {
+  static async createWorkflow(
+    rawInput?: unknown,
+    userId?: string | null,
+    orgId?: string | null,
+  ): Promise<Workflow> {
     const parsed = CreateWorkflowInputSchema.parse(rawInput ?? {});
     const now = new Date();
     const iso = now.toISOString();
@@ -151,6 +171,7 @@ export class WorkflowService {
     const name = parsed.name?.trim() || "Untitled Workflow";
     const description = parsed.description?.trim() ?? "";
     const status = parsed.status ?? "draft";
+    const visibility = parsed.visibility ?? "workspace";
     const { nodes, edges } = sanitizeGraph({ nodes: parsed.nodes ?? [], edges: parsed.edges ?? [] });
 
     // Validate canonical structure
@@ -173,9 +194,11 @@ export class WorkflowService {
           data: {
             id: workflowId,
             userId: userId ?? null,
+            organizationId: orgId ?? null,
             name,
             description,
             status,
+            visibility,
             createdAt: now,
             updatedAt: now,
             savedAt: null,
@@ -191,11 +214,23 @@ export class WorkflowService {
           },
         });
 
+        await AuditLogService.logAction({
+          organizationId: orgId,
+          userId: userId || "dev_local_user",
+          action: "WORKFLOW_CREATED",
+          resourceType: "workflow",
+          resourceId: workflowId,
+          metadata: { name, visibility },
+        });
+
         return {
           id: record.id,
+          userId: record.userId,
+          organizationId: record.organizationId,
           name: record.name,
           description: record.description,
           status: record.status as WorkflowStatus,
+          visibility: (record.visibility as "private" | "workspace") || "workspace",
           createdAt: record.createdAt.toISOString(),
           updatedAt: record.updatedAt.toISOString(),
           savedAt: record.savedAt ? record.savedAt.toISOString() : null,
@@ -210,9 +245,12 @@ export class WorkflowService {
     seedInMemoryWorkflowsIfEmpty();
     const workflow: Workflow = {
       id: workflowId,
+      userId: userId ?? null,
+      organizationId: orgId ?? null,
       name,
       description,
       status,
+      visibility,
       createdAt: iso,
       updatedAt: iso,
       savedAt: null,
@@ -228,7 +266,11 @@ export class WorkflowService {
     return workflow;
   }
 
-  static async getWorkflow(id: string, userId?: string | null): Promise<Workflow | null> {
+  static async getWorkflow(
+    id: string,
+    userId?: string | null,
+    orgId?: string | null,
+  ): Promise<Workflow | null> {
     if (isDatabaseConfigured()) {
       try {
         const record = await prisma.workflow.findUnique({
@@ -242,7 +284,11 @@ export class WorkflowService {
         });
 
         if (!record) return null;
-        if (userId && record.userId && record.userId !== userId) {
+        if (orgId && record.organizationId === orgId) {
+          if (record.visibility === "private" && record.userId && record.userId !== userId) {
+            return null; // Enforce private workflow creator isolation
+          }
+        } else if (userId && record.userId && record.userId !== userId && !record.organizationId) {
           return null; // Enforce strict tenant isolation
         }
 
@@ -427,10 +473,19 @@ export class WorkflowService {
     );
   }
 
-  static async deleteWorkflow(id: string, userId?: string | null): Promise<boolean> {
-    const existing = await this.getWorkflow(id, userId);
+  static async deleteWorkflow(
+    id: string,
+    userId?: string | null,
+    orgId?: string | null,
+    userRole?: string | null,
+  ): Promise<boolean> {
+    const existing = await this.getWorkflow(id, userId, orgId);
     if (!existing) {
       return false;
+    }
+
+    if (orgId && userRole === "member" && existing.userId && existing.userId !== userId) {
+      throw new Error("UNAUTHORIZED: Only admins/owners or the workflow creator can delete this workflow.");
     }
 
     if (isDatabaseConfigured()) {
@@ -438,6 +493,16 @@ export class WorkflowService {
         await prisma.workflow.delete({
           where: { id },
         });
+
+        await AuditLogService.logAction({
+          organizationId: orgId,
+          userId: userId || "dev_local_user",
+          action: "WORKFLOW_DELETED",
+          resourceType: "workflow",
+          resourceId: id,
+          metadata: { name: existing.name },
+        });
+
         return true;
       } catch (err) {
         console.warn("Database deletion failed in deleteWorkflow, falling back to memory store:", err);

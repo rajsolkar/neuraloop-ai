@@ -9,6 +9,9 @@ import {
   Timer,
   Webhook,
   Zap,
+  Variable,
+  Code,
+  ArrowRightCircle,
   type LucideIcon,
 } from "lucide-react";
 import type { NodeCategory } from "@/types/workflow";
@@ -101,6 +104,26 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     isTrigger: false,
   },
   {
+    id: "code",
+    name: "Code",
+    category: "action",
+    description: "Run custom JavaScript code snippet to transform data.",
+    icon: Code,
+    accentColor: "#ec4899",
+    defaultLabel: "Code",
+    isTrigger: false,
+  },
+  {
+    id: "webhook-response",
+    name: "Webhook Response",
+    category: "action",
+    description: "Return a custom HTTP response for incoming webhooks.",
+    icon: ArrowRightCircle,
+    accentColor: "#10b981",
+    defaultLabel: "Webhook Response",
+    isTrigger: false,
+  },
+  {
     id: "if",
     name: "IF",
     category: "logic",
@@ -118,6 +141,16 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     icon: Filter,
     accentColor: "#1e8d7d",
     defaultLabel: "Filter",
+    isTrigger: false,
+  },
+  {
+    id: "set-variable",
+    name: "Set Variable",
+    category: "logic",
+    description: "Set dynamic variables or transform workflow state.",
+    icon: Variable,
+    accentColor: "#06b6d4",
+    defaultLabel: "Set Variable",
     isTrigger: false,
   },
   {

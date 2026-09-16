@@ -8,12 +8,12 @@ interface RouteParams {
 }
 
 export async function GET(_request: Request, { params }: RouteParams) {
-  const { userId, errorResponse } = await requireAuthUser();
+  const { userId, orgId, errorResponse } = await requireAuthUser();
   if (errorResponse) return errorResponse;
 
   try {
     const { id } = await params;
-    const workflow = await WorkflowService.getWorkflow(id, userId);
+    const workflow = await WorkflowService.getWorkflow(id, userId, orgId);
     if (!workflow) {
       return NextResponse.json(
         { error: { code: "NOT_FOUND", message: `Workflow with ID ${id} not found` } },
@@ -31,7 +31,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
 }
 
 export async function PUT(request: Request, { params }: RouteParams) {
-  const { userId, errorResponse } = await requireAuthUser();
+  const { userId, orgId, errorResponse } = await requireAuthUser();
   if (errorResponse) return errorResponse;
 
   try {
@@ -67,12 +67,12 @@ export async function PUT(request: Request, { params }: RouteParams) {
 }
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
-  const { userId, errorResponse } = await requireAuthUser();
+  const { userId, orgId, orgRole, errorResponse } = await requireAuthUser();
   if (errorResponse) return errorResponse;
 
   try {
     const { id } = await params;
-    const deleted = await WorkflowService.deleteWorkflow(id, userId);
+    const deleted = await WorkflowService.deleteWorkflow(id, userId, orgId, orgRole);
     if (!deleted) {
       return NextResponse.json(
         { error: { code: "NOT_FOUND", message: `Workflow with ID ${id} not found` } },

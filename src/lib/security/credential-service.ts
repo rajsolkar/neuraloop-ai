@@ -39,8 +39,12 @@ export function maskSecret(secret: string): string {
   return `••••••••${trimmed.slice(-4)}`;
 }
 
+import { AuditLogService } from "@/lib/security/audit-log-service";
+
 export interface CredentialItem {
   id: string;
+  userId?: string;
+  organizationId?: string | null;
   name: string;
   provider: string;
   maskedValue: string;
@@ -51,9 +55,11 @@ export interface CredentialItem {
 }
 
 export class CredentialService {
-  static async listCredentials(userId: string): Promise<CredentialItem[]> {
+  static async listCredentials(userId: string, orgId?: string | null): Promise<CredentialItem[]> {
+    const whereClause = orgId ? { organizationId: orgId } : { userId };
+
     const records = await prisma.credential.findMany({
-      where: { userId },
+      where: whereClause,
       orderBy: { updatedAt: "desc" },
     });
 
@@ -67,6 +73,8 @@ export class CredentialService {
 
       return {
         id: r.id,
+        userId: r.userId,
+        organizationId: r.organizationId,
         name: r.name,
         provider: r.provider,
         maskedValue: maskSecret(rawSecret),
@@ -86,13 +94,20 @@ export class CredentialService {
       value: string;
       metadata?: Record<string, unknown>;
     },
+    orgId?: string | null,
+    userRole?: string | null,
   ): Promise<CredentialItem> {
+    if (orgId && userRole === "member") {
+      throw new Error("UNAUTHORIZED: Only workspace admins or owners can create shared credentials.");
+    }
+
     const { encryptedValue, iv } = encryptSecret(input.value);
     const providerClean = input.provider.toLowerCase().trim();
 
     const record = await prisma.credential.create({
       data: {
         userId,
+        organizationId: orgId || null,
         name: input.name.trim(),
         provider: providerClean,
         encryptedValue,
@@ -101,8 +116,19 @@ export class CredentialService {
       },
     });
 
+    await AuditLogService.logAction({
+      organizationId: orgId,
+      userId,
+      action: "CREDENTIAL_CREATED",
+      resourceType: "credential",
+      resourceId: record.id,
+      metadata: { name: record.name, provider: record.provider },
+    });
+
     return {
       id: record.id,
+      userId: record.userId,
+      organizationId: record.organizationId,
       name: record.name,
       provider: record.provider,
       maskedValue: maskSecret(input.value),
@@ -122,9 +148,16 @@ export class CredentialService {
       value?: string;
       metadata?: Record<string, unknown>;
     },
+    orgId?: string | null,
+    userRole?: string | null,
   ): Promise<CredentialItem | null> {
+    if (orgId && userRole === "member") {
+      throw new Error("UNAUTHORIZED: Only workspace admins or owners can update credentials.");
+    }
+
+    const whereClause = orgId ? { id, organizationId: orgId } : { id, userId };
     const existing = await prisma.credential.findFirst({
-      where: { id, userId },
+      where: whereClause,
     });
     if (!existing) return null;
 
@@ -156,6 +189,8 @@ export class CredentialService {
 
     return {
       id: updated.id,
+      userId: updated.userId,
+      organizationId: updated.organizationId,
       name: updated.name,
       provider: updated.provider,
       maskedValue: maskSecret(secretForMasking),
@@ -166,23 +201,49 @@ export class CredentialService {
     };
   }
 
-  static async deleteCredential(id: string, userId: string): Promise<boolean> {
+  static async deleteCredential(
+    id: string,
+    userId: string,
+    orgId?: string | null,
+    userRole?: string | null,
+  ): Promise<boolean> {
+    if (orgId && userRole === "member") {
+      throw new Error("UNAUTHORIZED: Only workspace admins or owners can delete credentials.");
+    }
+
+    const whereClause = orgId ? { id, organizationId: orgId } : { id, userId };
     const existing = await prisma.credential.findFirst({
-      where: { id, userId },
+      where: whereClause,
     });
     if (!existing) return false;
 
     await prisma.credential.delete({
       where: { id },
     });
+
+    await AuditLogService.logAction({
+      organizationId: orgId,
+      userId,
+      action: "CREDENTIAL_DELETED",
+      resourceType: "credential",
+      resourceId: id,
+      metadata: { name: existing.name, provider: existing.provider },
+    });
+
     return true;
   }
 
-  static async getDecryptedCredential(id: string, userId?: string | null): Promise<{
+  static async getDecryptedCredential(
+    id: string,
+    userId?: string | null,
+    orgId?: string | null,
+  ): Promise<{
     secret: string;
     metadata: Record<string, unknown> | null;
   } | null> {
-    const whereClause = userId ? { id, userId } : { id };
+    const whereClause = orgId
+      ? { id, organizationId: orgId }
+      : (userId ? { id, userId } : { id });
     const record = await prisma.credential.findFirst({
       where: whereClause,
     });

@@ -7,19 +7,25 @@ interface RouteParams {
 }
 
 export async function PUT(request: Request, { params }: RouteParams) {
-  const { userId, errorResponse } = await requireAuthUser();
+  const { userId, orgId, orgRole, errorResponse } = await requireAuthUser();
   if (errorResponse) return errorResponse;
 
   try {
     const { id } = await params;
     const body = await request.json();
 
-    const updated = await CredentialService.updateCredential(id, userId, {
-      name: body.name,
-      provider: body.provider,
-      value: body.value,
-      metadata: body.metadata,
-    });
+    const updated = await CredentialService.updateCredential(
+      id,
+      userId,
+      {
+        name: body.name,
+        provider: body.provider,
+        value: body.value,
+        metadata: body.metadata,
+      },
+      orgId,
+      orgRole,
+    );
 
     if (!updated) {
       return NextResponse.json(
@@ -39,12 +45,12 @@ export async function PUT(request: Request, { params }: RouteParams) {
 }
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
-  const { userId, errorResponse } = await requireAuthUser();
+  const { userId, orgId, orgRole, errorResponse } = await requireAuthUser();
   if (errorResponse) return errorResponse;
 
   try {
     const { id } = await params;
-    const deleted = await CredentialService.deleteCredential(id, userId);
+    const deleted = await CredentialService.deleteCredential(id, userId, orgId, orgRole);
     if (!deleted) {
       return NextResponse.json(
         { error: { code: "NOT_FOUND", message: `Credential with ID ${id} not found` } },

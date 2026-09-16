@@ -30,7 +30,7 @@ function resetStore() {
 
 describe("node library", () => {
   it("exposes a healthy registry of definitions", () => {
-    expect(NODE_DEFINITIONS.length).toBe(10);
+    expect(NODE_DEFINITIONS.length).toBe(13);
   });
 
   it("has unique definition ids", () => {

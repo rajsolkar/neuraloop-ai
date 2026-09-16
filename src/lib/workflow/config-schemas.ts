@@ -145,6 +145,38 @@ export const DelayConfigSchema = z.object({
 });
 export type DelayConfig = z.infer<typeof DelayConfigSchema>;
 
+// Set Variable Config
+export const SetVariableConfigSchema = z.object({
+  variables: z
+    .array(KeyValuePairSchema)
+    .default([{ key: "varName", value: "sampleValue" }]),
+});
+export type SetVariableConfig = z.infer<typeof SetVariableConfigSchema>;
+
+// Code Config
+export const CodeConfigSchema = z.object({
+  code: z
+    .string()
+    .default(
+      "// Write JS code snippet\n// Injected variables: input, steps, variables\nreturn { result: input.val || 'processed' };",
+    ),
+  mode: z.enum(["javascript"]).default("javascript"),
+});
+export type CodeConfig = z.infer<typeof CodeConfigSchema>;
+
+// Webhook Response Config
+export const WebhookResponseConfigSchema = z.object({
+  statusCode: z.number().int().min(100).max(599).default(200),
+  headers: z
+    .array(KeyValuePairSchema)
+    .default([{ key: "Content-Type", value: "application/json" }]),
+  bodyType: z.enum(["json", "text"]).default("json"),
+  body: z
+    .string()
+    .default('{\n  "success": true,\n  "message": "Processed successfully"\n}'),
+});
+export type WebhookResponseConfig = z.infer<typeof WebhookResponseConfigSchema>;
+
 // ------------------------------------------------------------------
 // Map of Definition ID -> Default Config & Zod Schema
 // ------------------------------------------------------------------
@@ -157,8 +189,11 @@ export const NODE_CONFIG_SCHEMAS: Record<string, z.ZodTypeAny> = {
   openai: OpenAiConfigSchema,
   slack: SlackConfigSchema,
   email: EmailConfigSchema,
+  code: CodeConfigSchema,
+  "webhook-response": WebhookResponseConfigSchema,
   if: IfConfigSchema,
   filter: FilterConfigSchema,
+  "set-variable": SetVariableConfigSchema,
   delay: DelayConfigSchema,
 };
 

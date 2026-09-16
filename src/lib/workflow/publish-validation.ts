@@ -29,7 +29,21 @@ export function isActionOrLogicNode(n: Partial<WorkflowNode>): boolean {
   if (cat === "action" || cat === "logic") return true;
 
   const defId = (n.data?.definitionId || n.type || n.data?.type || "").toString();
-  if (["http-request", "openai", "slack", "email", "if", "filter", "delay"].includes(defId)) return true;
+  if (
+    [
+      "http-request",
+      "openai",
+      "slack",
+      "email",
+      "code",
+      "webhook-response",
+      "if",
+      "filter",
+      "set-variable",
+      "delay",
+    ].includes(defId)
+  )
+    return true;
 
   const def = getNodeDefinition(defId);
   if (def && (!def.isTrigger || def.category === "action" || def.category === "logic")) return true;

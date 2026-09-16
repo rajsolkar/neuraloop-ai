@@ -25,6 +25,7 @@ import {
   FileText,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 export interface TimelineNodeExecution {
   id: string;
@@ -43,6 +44,7 @@ export interface TimelineNodeExecution {
 }
 
 export interface TimelineExecutionProps {
+  executionId?: string;
   status: "queued" | "running" | "success" | "failed" | "cancelled";
   source?: string;
   versionNumber?: number;
@@ -50,7 +52,13 @@ export interface TimelineExecutionProps {
   startedAt?: string;
   completedAt?: string | null;
   error?: string | null;
+  parentExecutionId?: string | null;
+  retryCount?: number;
   nodeExecutions?: TimelineNodeExecution[];
+  onCancel?: () => void;
+  onRetry?: () => void;
+  isRetrying?: boolean;
+  isCancelling?: boolean;
 }
 
 const NODE_TYPE_TITLES: Record<string, string> = {
@@ -61,19 +69,29 @@ const NODE_TYPE_TITLES: Record<string, string> = {
   openai: "OpenAI LLM",
   slack: "Slack Notification",
   email: "Email Notification",
+  code: "Code Executor",
+  "webhook-response": "Webhook Response",
   if: "IF Condition",
   filter: "Filter Data",
+  "set-variable": "Set Variable",
   delay: "Delay Execution",
 };
 
 export function ExecutionResultTimeline({
+  executionId,
   status,
   source = "manual",
   versionNumber,
   duration,
   startedAt,
   error,
+  parentExecutionId,
+  retryCount,
   nodeExecutions = [],
+  onCancel,
+  onRetry,
+  isRetrying = false,
+  isCancelling = false,
 }: TimelineExecutionProps) {
   const [openRawJson, setOpenRawJson] = useState<Record<string, boolean>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -148,11 +166,16 @@ export function ExecutionResultTimeline({
                   {source === "template" && <FileText className="h-3 w-3 text-emerald-600" />}
                   Source: {source}
                 </Badge>
-                {versionNumber && (
-                  <Badge variant="outline" className="text-[10px] font-mono text-ink-faint">
-                    Active Version at Runtime: v{versionNumber}
+                {parentExecutionId && (
+                  <Badge variant="outline" className="text-[10px] font-mono bg-purple-500/10 text-purple-600 border-purple-300">
+                    Replayed from: {parentExecutionId.slice(0, 12)}
                   </Badge>
                 )}
+                {retryCount && retryCount > 0 ? (
+                  <Badge variant="outline" className="text-[10px] font-mono bg-amber-500/10 text-amber-600 border-amber-300">
+                    Retry #{retryCount}
+                  </Badge>
+                ) : null}
               </div>
               <span className="text-[11px] text-ink-faint mt-0.5">
                 {startedAt ? `Started ${new Date(startedAt).toLocaleString()}` : "Pending execution"}
@@ -160,20 +183,48 @@ export function ExecutionResultTimeline({
             </div>
           </div>
 
-          <Badge
-            variant={
-              status === "success"
-                ? "active"
-                : status === "failed"
-                ? "draft"
-                : "outline"
-            }
-            className={`text-xs capitalize ${
-              status === "failed" ? "bg-error/15 text-error border-error/30" : ""
-            }`}
-          >
-            {status}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge
+              variant={
+                status === "success"
+                  ? "active"
+                  : status === "failed"
+                  ? "draft"
+                  : "outline"
+              }
+              className={`text-xs capitalize ${
+                status === "failed" ? "bg-error/15 text-error border-error/30" : ""
+              }`}
+            >
+              {status}
+            </Badge>
+
+            {(status === "running" || status === "queued") && onCancel && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onCancel}
+                disabled={isCancelling}
+                className="h-7 text-xs border-error/30 text-error hover:bg-error/10"
+              >
+                <Ban className="h-3 w-3 mr-1" />
+                {isCancelling ? "Cancelling..." : "Cancel"}
+              </Button>
+            )}
+
+            {(status === "failed" || status === "success" || status === "cancelled") && onRetry && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onRetry}
+                disabled={isRetrying}
+                className="h-7 text-xs border-accent/40 text-accent-ink hover:bg-accent/10"
+              >
+                <RefreshCw className={`h-3 w-3 mr-1 ${isRetrying ? "animate-spin" : ""}`} />
+                {isRetrying ? "Replaying..." : "Replay / Retry"}
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Metrics Bar */}

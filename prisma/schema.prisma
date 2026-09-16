@@ -12,9 +12,11 @@ datasource db {
 model Workflow {
   id                     String               @id
   userId                 String?              // Clerk User ID (nullable for legacy records)
+  organizationId         String?              // Clerk Organization / Workspace ID
   name                   String
   description            String               @default("")
   status                 String               @default("draft") // draft, published, archived
+  visibility             String               @default("workspace") // private, workspace
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
   savedAt                DateTime?
@@ -31,6 +33,7 @@ model Workflow {
   schedules              WorkflowSchedule[]
 
   @@index([userId])
+  @@index([organizationId])
   @@map("workflows")
 }
 
@@ -54,8 +57,11 @@ model WorkflowVersion {
 model WorkflowExecution {
   id                String          @id @default(uuid())
   userId            String?         // Clerk User ID of workflow owner
+  organizationId    String?         // Clerk Organization ID
   workflowId        String
   workflowVersionId String
+  parentExecutionId String?         // ID of original execution if this is a replay/retry
+  retryCount        Int             @default(0)
   status            String          @default("queued") // queued, running, success, failed, cancelled
   source            String          @default("manual") // manual, webhook, schedule, api
   startedAt         DateTime        @default(now())
@@ -71,8 +77,10 @@ model WorkflowExecution {
   nodeExecutions    NodeExecution[]
 
   @@index([userId])
+  @@index([organizationId])
   @@index([workflowId])
   @@index([workflowVersionId])
+  @@index([parentExecutionId])
   @@index([status])
   @@index([source])
   @@index([startedAt])
@@ -101,17 +109,19 @@ model NodeExecution {
 }
 
 model WorkflowGeneration {
-  id         String    @id @default(uuid())
-  userId     String?   // Clerk User ID
-  prompt     String    @db.Text
-  workflowId String?
-  status     String    // success, failed, rejected
-  error      String?   @db.Text
-  tokensUsed Int?
-  createdAt  DateTime  @default(now())
-  workflow   Workflow? @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+  id             String    @id @default(uuid())
+  userId         String?   // Clerk User ID
+  organizationId String?   // Clerk Organization ID
+  prompt         String    @db.Text
+  workflowId     String?
+  status         String    // success, failed, rejected
+  error          String?   @db.Text
+  tokensUsed     Int?
+  createdAt      DateTime  @default(now())
+  workflow       Workflow? @relation(fields: [workflowId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+  @@index([organizationId])
   @@index([workflowId])
   @@index([createdAt])
   @@map("workflow_generations")
@@ -119,7 +129,8 @@ model WorkflowGeneration {
 
 model Credential {
   id             String    @id @default(uuid())
-  userId         String    // Clerk User ID
+  userId         String    // Clerk User ID of creator
+  organizationId String?   // Clerk Organization ID
   name           String
   provider       String    // openai, anthropic, gemini, slack, smtp, custom
   encryptedValue String    @db.Text
@@ -130,21 +141,34 @@ model Credential {
   updatedAt      DateTime  @updatedAt
 
   @@index([userId])
+  @@index([organizationId])
   @@index([provider])
   @@map("credentials")
 }
 
 model WorkflowTemplate {
-  id          String   @id @default(uuid())
-  userId      String?  // null = official Neuraloop template, string = custom private template
-  name        String
-  description String
-  category    String   @default("general")
-  definition  Json
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(uuid())
+  userId         String?  // null = official Neuraloop template, string = custom private template
+  organizationId String?  // Clerk Organization ID
+  name           String
+  description    String
+  category       String   @default("general")
+  icon           String?
+  tags           Json?
+  featured       Boolean  @default(false)
+  usageCount     Int      @default(0)
+  definition     Json
+  isOfficial     Boolean  @default(false)
+  isPublic       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([userId])
+  @@index([organizationId])
+  @@index([category])
+  @@index([featured])
+  @@index([isOfficial])
+  @@index([usageCount])
   @@map("workflow_templates")
 }
 
@@ -152,6 +176,7 @@ model WorkflowSchedule {
   id             String    @id @default(uuid())
   workflowId     String
   userId         String    // Clerk User ID of workflow owner
+  organizationId String?   // Clerk Organization ID
   enabled        Boolean   @default(true)
   cronExpression String
   timezone       String    @default("UTC")
@@ -164,8 +189,26 @@ model WorkflowSchedule {
 
   @@index([workflowId])
   @@index([userId])
+  @@index([organizationId])
   @@index([nextRunAt])
   @@index([enabled, nextRunAt])
   @@map("workflow_schedules")
+}
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String?  // Clerk Organization ID
+  userId         String   // Clerk User ID
+  action         String   // WORKFLOW_CREATED, WORKFLOW_DELETED, WORKFLOW_PUBLISHED, CREDENTIAL_CREATED, CREDENTIAL_DELETED, MEMBER_INVITED, MEMBER_REMOVED
+  resourceType   String   // workflow, credential, member, organization
+  resourceId     String
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
 }
 

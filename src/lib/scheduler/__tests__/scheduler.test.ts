@@ -76,10 +76,12 @@ describe("Phase 12: Scheduler & Production Trigger Infrastructure Test Suite", (
 
   describe("3. Scheduler Service & Tick Execution", () => {
     it("should handle empty due schedules safely", async () => {
+      const findManySpy = vi.spyOn(prisma.workflowSchedule, "findMany").mockResolvedValueOnce([]);
       const result = await SchedulerService.processDueSchedules();
       expect(result.processed).toBe(0);
       expect(result.executed).toBe(0);
       expect(result.durationMs).toBeGreaterThanOrEqual(0);
+      findManySpy.mockRestore();
     });
 
     it("should process due schedules and enqueue executions", async () => {

@@ -27,15 +27,36 @@ export const WorkflowNodeComponent = memo(
     }, [duplicateNode, id]);
     const onDelete = useCallback(() => removeNode(id), [removeNode, id]);
 
+    const execStatus = data.lastExecutionStatus;
+
+    let borderColor = selected ? "var(--color-accent)" : "var(--color-border)";
+    let boxShadow = selected
+      ? "0 0 0 1px var(--color-accent), 0 8px 24px rgba(44,44,44,0.10)"
+      : undefined;
+
+    if (execStatus === "running") {
+      borderColor = "#3b82f6";
+      boxShadow = "0 0 14px rgba(59, 130, 246, 0.55)";
+    } else if (execStatus === "success") {
+      borderColor = "#10b981";
+      boxShadow = "0 0 12px rgba(16, 185, 129, 0.35)";
+    } else if (execStatus === "failed") {
+      borderColor = "#f43f5e";
+      boxShadow = "0 0 14px rgba(244, 63, 94, 0.45)";
+    } else if (execStatus === "cancelled") {
+      borderColor = "#f59e0b";
+      boxShadow = "0 0 10px rgba(245, 158, 11, 0.3)";
+    }
+
     return (
       <div
-        className="rounded-xl border bg-surface px-3.5 py-3 shadow-sm transition-[border-color,box-shadow] duration-300"
+        className={`rounded-xl border bg-surface px-3.5 py-3 shadow-sm transition-[border-color,box-shadow] duration-300 ${
+          execStatus === "running" ? "animate-pulse" : ""
+        }`}
         style={{
           width: 250,
-          borderColor: selected ? "var(--color-accent)" : "var(--color-border)",
-          boxShadow: selected
-            ? "0 0 0 1px var(--color-accent), 0 8px 24px rgba(44,44,44,0.10)"
-            : undefined,
+          borderColor,
+          boxShadow,
           outline: selected ? `3px solid ${hexToRgba("#39ff14", 0.18)}` : undefined,
         }}
       >
@@ -93,10 +114,6 @@ export const WorkflowNodeComponent = memo(
                 size="icon-sm"
                 tabIndex={-1}
                 onPointerDown={(event) => {
-                  // Keep menu clicks (and the refire click that DropdownMenu
-                  // dispatches on the trigger when it closes) from reaching the
-                  // canvas, which would otherwise re-select the original node
-                  // right after Duplicate selected its copy.
                   event.stopPropagation();
                 }}
                 onClick={(event) => {
@@ -131,12 +148,28 @@ export const WorkflowNodeComponent = memo(
           >
             {def ? def.name : data.definitionId}
           </span>
-          {data.definitionId === "if" && (
+          {execStatus ? (
+            <span
+              className={`text-[9px] font-mono uppercase tracking-wider font-bold px-1.5 py-0.5 rounded ${
+                execStatus === "success"
+                  ? "bg-emerald-500/15 text-emerald-600"
+                  : execStatus === "failed"
+                  ? "bg-rose-500/15 text-rose-600"
+                  : execStatus === "running"
+                  ? "bg-blue-500/15 text-blue-600"
+                  : execStatus === "cancelled"
+                  ? "bg-amber-500/15 text-amber-600"
+                  : "bg-canvas text-ink-faint"
+              }`}
+            >
+              {execStatus}
+            </span>
+          ) : data.definitionId === "if" ? (
             <div className="flex items-center gap-3 text-[9px] font-bold uppercase tracking-wider">
               <span className="text-success-ink">True</span>
               <span className="text-error-ink">False</span>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     );

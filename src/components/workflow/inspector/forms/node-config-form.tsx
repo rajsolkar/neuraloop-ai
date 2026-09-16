@@ -14,6 +14,9 @@ import type {
   IfConfig,
   FilterConfig,
   DelayConfig,
+  SetVariableConfig,
+  CodeConfig,
+  WebhookResponseConfig,
 } from "@/lib/workflow/config-schemas";
 
 interface NodeConfigFormProps {
@@ -36,10 +39,16 @@ export function NodeConfigForm({ definitionId, config, onChange }: NodeConfigFor
       return <ScheduleForm config={config as ScheduleConfig} onChange={onChange} />;
     case "webhook":
       return <WebhookForm config={config as WebhookConfig} onChange={onChange} />;
+    case "code":
+      return <CodeForm config={config as CodeConfig} onChange={onChange} />;
+    case "webhook-response":
+      return <WebhookResponseForm config={config as WebhookResponseConfig} onChange={onChange} />;
     case "if":
       return <IfForm config={config as IfConfig} onChange={onChange} />;
     case "filter":
       return <FilterForm config={config as FilterConfig} onChange={onChange} />;
+    case "set-variable":
+      return <SetVariableForm config={config as SetVariableConfig} onChange={onChange} />;
     case "delay":
       return <DelayForm config={config as DelayConfig} onChange={onChange} />;
     case "manual-trigger":
@@ -589,6 +598,125 @@ function DelayForm({
             { value: "minutes", label: "Minutes" },
             { value: "hours", label: "Hours" },
           ]}
+        />
+      </FormField>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------
+// 10. Set Variable Form
+// ------------------------------------------------------------------
+function SetVariableForm({
+  config,
+  onChange,
+}: {
+  config: SetVariableConfig;
+  onChange: (patch: Record<string, unknown>) => void;
+}) {
+  const variables = config.variables ?? [{ key: "varName", value: "sampleValue" }];
+
+  return (
+    <div className="flex flex-col gap-3.5">
+      <KeyValueEditor
+        title="Set Workflow Variables"
+        items={variables}
+        onChange={(items) => onChange({ ...config, variables: items })}
+      />
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------
+// 11. Code Form
+// ------------------------------------------------------------------
+function CodeForm({
+  config,
+  onChange,
+}: {
+  config: CodeConfig;
+  onChange: (patch: Record<string, unknown>) => void;
+}) {
+  const code = config.code ?? "// Write JS code snippet\nreturn { success: true };";
+  const mode = config.mode ?? "javascript";
+
+  return (
+    <div className="flex flex-col gap-3.5">
+      <FormField label="Language Mode">
+        <FormSelect
+          value={mode}
+          onChange={(val) => onChange({ ...config, mode: val })}
+          options={[{ value: "javascript", label: "JavaScript / TypeScript" }]}
+        />
+      </FormField>
+
+      <FormField label="JavaScript Code Snippet" description="Injected variables: input, steps, context">
+        <Textarea
+          placeholder="// Write code snippet...\nreturn { key: input.val };"
+          value={code}
+          onChange={(e) => onChange({ ...config, code: e.target.value })}
+          className="font-mono text-xs h-40 bg-canvas"
+        />
+      </FormField>
+
+      <div className="rounded-md border border-border/80 bg-canvas p-2.5 text-[11px] text-ink-faint font-mono">
+        💡 Tip: Use <code className="text-accent-ink font-bold">return &#123; result: ... &#125;;</code> to return objects to downstream nodes.
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------
+// 12. Webhook Response Form
+// ------------------------------------------------------------------
+function WebhookResponseForm({
+  config,
+  onChange,
+}: {
+  config: WebhookResponseConfig;
+  onChange: (patch: Record<string, unknown>) => void;
+}) {
+  const statusCode = config.statusCode ?? 200;
+  const headers = config.headers ?? [{ key: "Content-Type", value: "application/json" }];
+  const bodyType = config.bodyType ?? "json";
+  const body = config.body ?? '{\n  "success": true\n}';
+
+  return (
+    <div className="flex flex-col gap-3.5">
+      <FormField label="HTTP Status Code">
+        <Input
+          type="number"
+          min="100"
+          max="599"
+          value={statusCode}
+          onChange={(e) => onChange({ ...config, statusCode: parseInt(e.target.value, 10) || 200 })}
+          className="font-mono text-xs"
+        />
+      </FormField>
+
+      <KeyValueEditor
+        title="HTTP Response Headers"
+        items={headers}
+        onChange={(items) => onChange({ ...config, headers: items })}
+      />
+
+      <FormField label="Response Body Type">
+        <FormSelect
+          value={bodyType}
+          onChange={(val) => onChange({ ...config, bodyType: val })}
+          options={[
+            { value: "json", label: "JSON" },
+            { value: "text", label: "Plain Text / Raw" },
+          ]}
+        />
+      </FormField>
+
+      <FormField label="Response Body Payload">
+        <Textarea
+          placeholder="Response body template..."
+          value={body}
+          onChange={(e) => onChange({ ...config, body: e.target.value })}
+          className="font-mono text-xs h-32 bg-canvas"
         />
       </FormField>
     </div>
