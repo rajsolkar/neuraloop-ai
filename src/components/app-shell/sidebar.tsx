@@ -26,8 +26,7 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Home", href: "/", icon: Home },
-  { label: "My Workflows", href: "/workflows", icon: FolderKanban },
+  { label: "Dashboard", href: "/workflows", icon: FolderKanban },
   { label: "Templates", href: "/templates", icon: LayoutTemplate },
   { label: "Executions", href: "/executions", icon: Play },
   { label: "Team", href: "/team", icon: Users },

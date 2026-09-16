@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     "Design, connect and automate workflows on a visual canvas.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <ClerkProvider
       signInUrl="/sign-in"
