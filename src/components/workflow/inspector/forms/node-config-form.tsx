@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { FormField, FormSelect, KeyValueEditor, ConditionBuilder, CredentialNotice } from "./form-components";
+import { FormField, FormSelect, KeyValueEditor, ConditionBuilder, CredentialSelect } from "./form-components";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type {
@@ -64,9 +64,10 @@ function HttpRequestForm({
   config,
   onChange,
 }: {
-  config: HttpRequestConfig;
+  config: HttpRequestConfig & { credentialId?: string };
   onChange: (patch: Record<string, unknown>) => void;
 }) {
+  const credentialId = config.credentialId ?? "";
   const method = config.method ?? "GET";
   const url = config.url ?? "";
   const queryParams = config.queryParams ?? [];
@@ -76,6 +77,13 @@ function HttpRequestForm({
 
   return (
     <div className="flex flex-col gap-3.5">
+      <CredentialSelect
+        provider="custom"
+        value={credentialId}
+        onChange={(cid) => onChange({ ...config, credentialId: cid })}
+        label="Authentication Credential (Optional)"
+      />
+
       <FormField label="Method">
         <FormSelect
           value={method}
@@ -143,9 +151,10 @@ function OpenAiForm({
   config,
   onChange,
 }: {
-  config: OpenAiConfig;
+  config: OpenAiConfig & { credentialId?: string };
   onChange: (patch: Record<string, unknown>) => void;
 }) {
+  const credentialId = config.credentialId ?? "";
   const model = config.model ?? "gpt-4o-mini";
   const prompt = config.prompt ?? "";
   const temperature = config.temperature ?? 0.7;
@@ -153,7 +162,12 @@ function OpenAiForm({
 
   return (
     <div className="flex flex-col gap-3.5">
-      <CredentialNotice provider="OpenAI API" />
+      <CredentialSelect
+        provider="openai"
+        value={credentialId}
+        onChange={(cid) => onChange({ ...config, credentialId: cid })}
+        label="AI API Credential"
+      />
 
       <FormField label="Model">
         <FormSelect
@@ -210,15 +224,21 @@ function SlackForm({
   config,
   onChange,
 }: {
-  config: SlackConfig;
+  config: SlackConfig & { credentialId?: string };
   onChange: (patch: Record<string, unknown>) => void;
 }) {
+  const credentialId = config.credentialId ?? "";
   const channel = config.channel ?? "#general";
   const message = config.message ?? "";
 
   return (
     <div className="flex flex-col gap-3.5">
-      <CredentialNotice provider="Slack Bot" />
+      <CredentialSelect
+        provider="slack"
+        value={credentialId}
+        onChange={(cid) => onChange({ ...config, credentialId: cid })}
+        label="Slack Bot Credential"
+      />
 
       <FormField label="Channel">
         <Input
@@ -248,9 +268,10 @@ function EmailForm({
   config,
   onChange,
 }: {
-  config: EmailConfig;
+  config: EmailConfig & { credentialId?: string };
   onChange: (patch: Record<string, unknown>) => void;
 }) {
+  const credentialId = config.credentialId ?? "";
   const to = config.to ?? "";
   const cc = config.cc ?? "";
   const bcc = config.bcc ?? "";
@@ -259,7 +280,12 @@ function EmailForm({
 
   return (
     <div className="flex flex-col gap-3.5">
-      <CredentialNotice provider="Email / SMTP" />
+      <CredentialSelect
+        provider="smtp"
+        value={credentialId}
+        onChange={(cid) => onChange({ ...config, credentialId: cid })}
+        label="SMTP Email Credential"
+      />
 
       <FormField label="To (Recipient Email)">
         <Input

@@ -95,11 +95,12 @@ export class ExecutionQueue {
   static async enqueueExecution(options: {
     workflowId: string;
     workflowVersionId: string;
+    userId?: string | null;
     input?: Record<string, unknown>;
     source?: ExecutionSource;
     triggerMetadata?: Record<string, unknown>;
   }): Promise<{ id: string; status: string }> {
-    const { workflowId, workflowVersionId, input = {}, source = "manual", triggerMetadata } = options;
+    const { workflowId, workflowVersionId, userId, input = {}, source = "manual", triggerMetadata } = options;
 
     let executionId = `exec-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
@@ -109,6 +110,7 @@ export class ExecutionQueue {
           data: {
             workflowId,
             workflowVersionId,
+            userId: userId ?? null,
             status: "queued",
             source,
             input: input as unknown as import("@prisma/client").Prisma.InputJsonValue,

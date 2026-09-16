@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { cancelExecutionJob } from "@/lib/queue/execution-queue";
+import { requireAuthUser } from "@/lib/auth/get-auth-user";
 
 export async function POST(
   _request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
+  const { userId, errorResponse } = await requireAuthUser();
+  if (errorResponse) return errorResponse;
+
   const { id: executionId } = await context.params;
 
   try {

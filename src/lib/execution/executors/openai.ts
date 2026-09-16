@@ -1,6 +1,7 @@
 import type { WorkflowNode } from "@/types/workflow";
 import type { ExecutionContext, NodeExecutionResult, NodeExecutor } from "../types";
 import { resolveExpression } from "../expression";
+import { CredentialService } from "@/lib/security/credential-service";
 
 export const OpenAiExecutor: NodeExecutor = {
   definitionId: "openai",
@@ -10,12 +11,19 @@ export const OpenAiExecutor: NodeExecutor = {
     context: ExecutionContext,
   ): Promise<NodeExecutionResult> {
     const config = (node.data.config as Record<string, unknown>) ?? {};
-    const apiKey = process.env.OPENAI_API_KEY;
+    let apiKey = process.env.OPENAI_API_KEY;
+
+    if (config.credentialId) {
+      const resolved = await CredentialService.getDecryptedCredential(config.credentialId as string, context.userId);
+      if (resolved?.secret) {
+        apiKey = resolved.secret;
+      }
+    }
 
     if (!apiKey || !apiKey.trim()) {
       return {
         status: "failed",
-        error: "CREDENTIAL_NOT_CONFIGURED: OPENAI_API_KEY environment variable is not set on the server.",
+        error: "CREDENTIAL_NOT_CONFIGURED: OpenAI API key is missing. Please attach a valid credential in the inspector.",
       };
     }
 

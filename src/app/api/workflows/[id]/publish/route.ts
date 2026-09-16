@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { PublishService } from "@/lib/workflow/publish-service";
+import { requireAuthUser } from "@/lib/auth/get-auth-user";
 import type { WorkflowNode, WorkflowEdge } from "@/types/workflow";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const { userId, errorResponse } = await requireAuthUser();
+  if (errorResponse) return errorResponse;
+
   const { id: workflowId } = await params;
 
   try {
@@ -23,11 +27,15 @@ export async function POST(
     const nodes = Array.isArray(body.nodes) ? (body.nodes as WorkflowNode[]) : undefined;
     const edges = Array.isArray(body.edges) ? (body.edges as WorkflowEdge[]) : undefined;
 
-    const publishedWorkflow = await PublishService.publishWorkflow(workflowId, {
-      activateImmediately,
-      nodes,
-      edges,
-    });
+    const publishedWorkflow = await PublishService.publishWorkflow(
+      workflowId,
+      {
+        activateImmediately,
+        nodes,
+        edges,
+      },
+      userId,
+    );
     return NextResponse.json(
       {
         message: `Workflow "${publishedWorkflow.name}" published successfully (v${publishedWorkflow.publishedVersionNumber})`,

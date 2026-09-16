@@ -1,7 +1,17 @@
 import { NextResponse } from "next/server";
 import { WorkflowGenerationService } from "@/lib/ai/workflow-generator";
+import { requireAuthUser } from "@/lib/auth/get-auth-user";
+import { limitAiGeneration, createRateLimitResponse } from "@/lib/security/rate-limit";
 
 export async function POST(request: Request) {
+  const { userId, errorResponse } = await requireAuthUser();
+  if (errorResponse) return errorResponse;
+
+  const rateLimitResult = await limitAiGeneration(request, userId);
+  if (!rateLimitResult.success) {
+    return createRateLimitResponse(rateLimitResult);
+  }
+
   try {
     let body: Record<string, unknown> = {};
     try {
@@ -25,6 +35,7 @@ export async function POST(request: Request) {
     const result = await WorkflowGenerationService.generateWorkflow({
       prompt,
       clientId: clientIp,
+      userId,
     });
 
     return NextResponse.json(

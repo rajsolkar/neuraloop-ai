@@ -1,4 +1,4 @@
-// Prisma schema for Neuraloop Phase 2, Phase 6, Phase 7 & Phase 7.1 (Neon PostgreSQL backend)
+// Prisma schema for Neuraloop Phase 9 (Clerk Auth & Multi-Tenant Security)
 
 generator client {
   provider = "prisma-client-js"
@@ -11,6 +11,7 @@ datasource db {
 
 model Workflow {
   id                     String               @id
+  userId                 String?              // Clerk User ID (nullable for legacy records)
   name                   String
   description            String               @default("")
   status                 String               @default("draft") // draft, published, archived
@@ -28,6 +29,7 @@ model Workflow {
   executions             WorkflowExecution[]
   generations            WorkflowGeneration[]
 
+  @@index([userId])
   @@map("workflows")
 }
 
@@ -50,6 +52,7 @@ model WorkflowVersion {
 
 model WorkflowExecution {
   id                String          @id @default(uuid())
+  userId            String?         // Clerk User ID of workflow owner
   workflowId        String
   workflowVersionId String
   status            String          @default("queued") // queued, running, success, failed, cancelled
@@ -66,6 +69,7 @@ model WorkflowExecution {
   version           WorkflowVersion @relation(fields: [workflowVersionId], references: [id], onDelete: Cascade)
   nodeExecutions    NodeExecution[]
 
+  @@index([userId])
   @@index([workflowId])
   @@index([workflowVersionId])
   @@index([status])
@@ -97,6 +101,7 @@ model NodeExecution {
 
 model WorkflowGeneration {
   id         String    @id @default(uuid())
+  userId     String?   // Clerk User ID
   prompt     String    @db.Text
   workflowId String?
   status     String    // success, failed, rejected
@@ -105,7 +110,39 @@ model WorkflowGeneration {
   createdAt  DateTime  @default(now())
   workflow   Workflow? @relation(fields: [workflowId], references: [id], onDelete: SetNull)
 
+  @@index([userId])
   @@index([workflowId])
   @@index([createdAt])
   @@map("workflow_generations")
+}
+
+model Credential {
+  id             String    @id @default(uuid())
+  userId         String    // Clerk User ID
+  name           String
+  provider       String    // openai, anthropic, gemini, slack, smtp, custom
+  encryptedValue String    @db.Text
+  iv             String
+  metadata       Json?     // Provider configuration (smtpHost, port, username, etc.)
+  lastUsedAt     DateTime? // Usage tracking timestamp
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([provider])
+  @@map("credentials")
+}
+
+model WorkflowTemplate {
+  id          String   @id @default(uuid())
+  userId      String?  // null = official Neuraloop template, string = custom private template
+  name        String
+  description String
+  category    String   @default("general")
+  definition  Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@map("workflow_templates")
 }

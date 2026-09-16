@@ -2,12 +2,26 @@ import { NextResponse } from "next/server";
 import { WorkflowService } from "@/lib/workflow/workflow-service";
 import { ExecutionQueue } from "@/lib/queue/execution-queue";
 import { prisma } from "@/lib/prisma";
+import { limitWebhook, createRateLimitResponse } from "@/lib/security/rate-limit";
+import { checkPayloadSize } from "@/lib/security/payload-limit";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string; secret: string }> },
 ) {
   const { id: workflowId, secret: urlSecret } = await params;
+
+  // 1. Payload size protection (1 MB limit)
+  const payloadCheck = await checkPayloadSize(request, 1024 * 1024);
+  if (!payloadCheck.valid && payloadCheck.response) {
+    return payloadCheck.response;
+  }
+
+  // 2. Rate limiting protection (60 req/min per IP + webhookId)
+  const rateLimitResult = await limitWebhook(request, workflowId);
+  if (!rateLimitResult.success) {
+    return createRateLimitResponse(rateLimitResult);
+  }
 
   try {
     const workflow = await WorkflowService.getWorkflow(workflowId);
@@ -47,7 +61,7 @@ export async function POST(
 
     let payload: Record<string, unknown> = {};
     try {
-      const text = await request.text();
+      const text = payloadCheck.bodyText ?? (await request.text());
       if (text.trim()) {
         payload = JSON.parse(text);
       }

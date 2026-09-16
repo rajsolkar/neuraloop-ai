@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuthUser } from "@/lib/auth/get-auth-user";
 
 export async function GET(request: Request) {
+  const { userId, errorResponse } = await requireAuthUser();
+  if (errorResponse) return errorResponse;
+
   if (!process.env.DATABASE_URL) {
     return NextResponse.json({ executions: [] }, { status: 200 });
   }
@@ -12,7 +16,9 @@ export async function GET(request: Request) {
   const limit = limitStr ? parseInt(limitStr, 10) : 50;
 
   try {
-    const whereClause: Record<string, unknown> = {};
+    const whereClause: Record<string, unknown> = {
+      OR: [{ userId }, { userId: null }],
+    };
     if (status && status !== "all") {
       whereClause.status = status;
     }

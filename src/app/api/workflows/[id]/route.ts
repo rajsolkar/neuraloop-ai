@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { WorkflowService } from "@/lib/workflow/workflow-service";
+import { requireAuthUser } from "@/lib/auth/get-auth-user";
 import { ZodError } from "zod";
 
 interface RouteParams {
@@ -7,9 +8,12 @@ interface RouteParams {
 }
 
 export async function GET(_request: Request, { params }: RouteParams) {
+  const { userId, errorResponse } = await requireAuthUser();
+  if (errorResponse) return errorResponse;
+
   try {
     const { id } = await params;
-    const workflow = await WorkflowService.getWorkflow(id);
+    const workflow = await WorkflowService.getWorkflow(id, userId);
     if (!workflow) {
       return NextResponse.json(
         { error: { code: "NOT_FOUND", message: `Workflow with ID ${id} not found` } },
@@ -27,10 +31,13 @@ export async function GET(_request: Request, { params }: RouteParams) {
 }
 
 export async function PUT(request: Request, { params }: RouteParams) {
+  const { userId, errorResponse } = await requireAuthUser();
+  if (errorResponse) return errorResponse;
+
   try {
     const { id } = await params;
     const body = await request.json();
-    const workflow = await WorkflowService.updateWorkflow(id, body);
+    const workflow = await WorkflowService.updateWorkflow(id, body, userId);
     return NextResponse.json({ workflow }, { status: 200 });
   } catch (error) {
     if (error instanceof ZodError) {
@@ -60,9 +67,12 @@ export async function PUT(request: Request, { params }: RouteParams) {
 }
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
+  const { userId, errorResponse } = await requireAuthUser();
+  if (errorResponse) return errorResponse;
+
   try {
     const { id } = await params;
-    const deleted = await WorkflowService.deleteWorkflow(id);
+    const deleted = await WorkflowService.deleteWorkflow(id, userId);
     if (!deleted) {
       return NextResponse.json(
         { error: { code: "NOT_FOUND", message: `Workflow with ID ${id} not found` } },

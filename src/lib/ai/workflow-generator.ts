@@ -171,6 +171,7 @@ export class WorkflowGenerationService {
   static async generateWorkflow(options: {
     prompt: string;
     clientId?: string;
+    userId?: string | null;
   }): Promise<{
     workflow: {
       name: string;
@@ -181,7 +182,7 @@ export class WorkflowGenerationService {
     generationId: string;
     mode: "openai" | "offline-generator";
   }> {
-    const { prompt, clientId = "default-client" } = options;
+    const { prompt, clientId = "unknown", userId } = options;
 
     if (!prompt || !prompt.trim()) {
       throw new Error("PROMPT_REQUIRED: Please provide a workflow description.");
@@ -302,6 +303,7 @@ Output JSON Schema:
         await prisma.workflowGeneration.create({
           data: {
             id: generationId,
+            userId: userId ?? null,
             prompt,
             status: "success",
           },

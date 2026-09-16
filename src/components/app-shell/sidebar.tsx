@@ -13,6 +13,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { UserMenu } from "@/components/auth/user-menu";
 import { useUiStore } from "@/store/ui-store";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -130,6 +131,10 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           );
         })}
       </nav>
+
+      <div className="border-t border-border p-3">
+        <UserMenu />
+      </div>
     </div>
   );
 }

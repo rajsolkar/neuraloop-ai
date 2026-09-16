@@ -9,6 +9,7 @@ export interface ExecutionContext {
   workflowId: string;
   workflowVersionId: string;
   versionNumber: number;
+  userId?: string | null;
   input: Record<string, unknown>;
   /** Map of nodeId -> node output JSON */
   nodeOutputs: Record<string, unknown>;

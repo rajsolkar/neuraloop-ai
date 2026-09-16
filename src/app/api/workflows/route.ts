@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { WorkflowService } from "@/lib/workflow/workflow-service";
+import { requireAuthUser } from "@/lib/auth/get-auth-user";
 import { ZodError } from "zod";
 
 export async function GET() {
+  const { userId, errorResponse } = await requireAuthUser();
+  if (errorResponse) return errorResponse;
+
   try {
-    const workflows = await WorkflowService.listWorkflows();
+    const workflows = await WorkflowService.listWorkflows(userId);
     return NextResponse.json({ workflows }, { status: 200 });
   } catch (error) {
     console.error("GET /api/workflows error:", error);
@@ -16,9 +20,12 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const { userId, errorResponse } = await requireAuthUser();
+  if (errorResponse) return errorResponse;
+
   try {
     const body = await request.json().catch(() => ({}));
-    const workflow = await WorkflowService.createWorkflow(body);
+    const workflow = await WorkflowService.createWorkflow(body, userId);
     return NextResponse.json({ workflow }, { status: 201 });
   } catch (error) {
     if (error instanceof ZodError) {

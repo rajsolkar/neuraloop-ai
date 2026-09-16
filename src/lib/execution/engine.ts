@@ -15,6 +15,35 @@ function isDatabaseConfigured(): boolean {
   return Boolean(process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== "");
 }
 
+function sanitizeSecrets(data: unknown): unknown {
+  if (!data) return data;
+  if (typeof data === "string") {
+    return data
+      .replace(/sk-[a-zA-Z0-9_\-]{20,}/g, "sk-[REDACTED]")
+      .replace(/xoxb-[a-zA-Z0-9_\-]{20,}/g, "xoxb-[REDACTED]")
+      .replace(/Bearer\s+[a-zA-Z0-9_\-\.]{20,}/gi, "Bearer [REDACTED]");
+  }
+  if (Array.isArray(data)) {
+    return data.map(sanitizeSecrets);
+  }
+  if (typeof data === "object") {
+    const clean: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(data as Record<string, unknown>)) {
+      if (
+        key.toLowerCase().includes("secret") ||
+        key.toLowerCase().includes("password") ||
+        key.toLowerCase().includes("apikey")
+      ) {
+        clean[key] = "[REDACTED]";
+      } else {
+        clean[key] = sanitizeSecrets(val);
+      }
+    }
+    return clean;
+  }
+  return data;
+}
+
 export class WorkflowEngine {
   /**
    * Execute a specific workflow version by ID or workflow ID.
@@ -23,6 +52,7 @@ export class WorkflowEngine {
     workflowId: string;
     versionId?: string;
     executionId?: string;
+    userId?: string | null;
     input?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
   }): Promise<WorkflowExecutionRecord> {
@@ -32,6 +62,7 @@ export class WorkflowEngine {
     let versionId = options.versionId;
     let versionNumber = 1;
     let canonicalWorkflow: Workflow | null = null;
+    let ownerUserId: string | null = options.userId || null;
 
     if (isDatabaseConfigured()) {
       try {
@@ -52,6 +83,7 @@ export class WorkflowEngine {
         if (dbVersion) {
           versionId = dbVersion.id;
           versionNumber = dbVersion.version;
+          ownerUserId = dbVersion.workflow.userId || ownerUserId;
           const def = dbVersion.definition as unknown as Record<string, unknown>;
           canonicalWorkflow = {
             id: dbVersion.workflowId,
@@ -71,7 +103,7 @@ export class WorkflowEngine {
     }
 
     if (!canonicalWorkflow) {
-      canonicalWorkflow = await WorkflowService.getWorkflow(workflowId);
+      canonicalWorkflow = await WorkflowService.getWorkflow(workflowId, ownerUserId);
       if (!canonicalWorkflow) {
         throw new Error(`WORKFLOW_NOT_FOUND: Workflow with ID '${workflowId}' not found.`);
       }
@@ -137,6 +169,7 @@ export class WorkflowEngine {
       workflowId: canonicalWorkflow.id,
       workflowVersionId: versionId!,
       versionNumber,
+      userId: ownerUserId,
       input,
       nodeOutputs: {},
       nodeInputs: {},
@@ -342,9 +375,9 @@ export class WorkflowEngine {
             startedAt: new Date(r.startedAt),
             completedAt: r.completedAt ? new Date(r.completedAt) : undefined,
             duration: r.duration,
-            input: (r.input || {}) as unknown as Prisma.InputJsonValue,
-            output: (r.output || {}) as unknown as Prisma.InputJsonValue,
-            error: r.error,
+            input: sanitizeSecrets(r.input || {}) as unknown as Prisma.InputJsonValue,
+            output: sanitizeSecrets(r.output || {}) as unknown as Prisma.InputJsonValue,
+            error: r.error ? String(sanitizeSecrets(r.error)) : undefined,
             attempt: r.attempt,
           })),
         });
@@ -355,8 +388,8 @@ export class WorkflowEngine {
             status: overallStatus,
             completedAt: new Date(endTime),
             duration: totalDuration,
-            output: context.nodeOutputs as unknown as Prisma.InputJsonValue,
-            error: overallError,
+            output: sanitizeSecrets(context.nodeOutputs) as unknown as Prisma.InputJsonValue,
+            error: overallError ? String(sanitizeSecrets(overallError)) : undefined,
           },
         });
       } catch (err) {

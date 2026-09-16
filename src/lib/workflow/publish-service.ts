@@ -4,6 +4,7 @@
  * draft change detection, and race-safe non-destructive version rollback.
  */
 
+import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { makeId } from "@/lib/utils";
@@ -18,7 +19,7 @@ const inMemoryVersionsMap = new Map<string, WorkflowVersionRecord[]>();
 
 export class PublishService {
   static generateSecret(): string {
-    return `sk_live_${makeId("sk")}${makeId("secret")}`;
+    return `sk_live_${crypto.randomBytes(32).toString("hex")}`;
   }
 
   static async publishWorkflow(
@@ -28,8 +29,9 @@ export class PublishService {
       nodes?: WorkflowNode[];
       edges?: WorkflowEdge[];
     } = { activateImmediately: true },
+    userId?: string | null,
   ): Promise<Workflow> {
-    let workflow = await WorkflowService.getWorkflow(id);
+    let workflow = await WorkflowService.getWorkflow(id, userId);
     if (!workflow) {
       throw new Error(`Workflow with ID ${id} not found.`);
     }
@@ -40,10 +42,14 @@ export class PublishService {
         nodes: options.nodes,
         edges: options.edges ?? workflow.edges,
       };
-      await WorkflowService.updateWorkflow(id, {
-        nodes: options.nodes,
-        edges: options.edges ?? workflow.edges,
-      });
+      await WorkflowService.updateWorkflow(
+        id,
+        {
+          nodes: options.nodes,
+          edges: options.edges ?? workflow.edges,
+        },
+        userId,
+      );
     }
 
     // 1. Graph Publish Validation
@@ -295,7 +301,12 @@ export class PublishService {
     };
   }
 
-  static async rotateWebhookSecret(id: string): Promise<string> {
+  static async rotateWebhookSecret(id: string, userId?: string | null): Promise<string> {
+    const existing = await WorkflowService.getWorkflow(id, userId);
+    if (!existing) {
+      throw new Error(`Workflow with ID ${id} not found.`);
+    }
+
     const newSecret = this.generateSecret();
 
     if (process.env.DATABASE_URL) {

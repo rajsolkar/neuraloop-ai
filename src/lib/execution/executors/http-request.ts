@@ -2,6 +2,7 @@ import type { WorkflowNode } from "@/types/workflow";
 import type { ExecutionContext, NodeExecutionResult, NodeExecutor } from "../types";
 import { validateUrlForSsrf } from "../ssrf";
 import { resolveExpression } from "../expression";
+import { CredentialService } from "@/lib/security/credential-service";
 
 export const HttpRequestExecutor: NodeExecutor = {
   definitionId: "http-request",
@@ -35,6 +36,14 @@ export const HttpRequestExecutor: NodeExecutor = {
 
     // Prepare headers
     const headersObj: Record<string, string> = {};
+
+    if (config.credentialId) {
+      const resolved = await CredentialService.getDecryptedCredential(config.credentialId as string, context.userId);
+      if (resolved?.secret) {
+        headersObj["Authorization"] = `Bearer ${resolved.secret}`;
+      }
+    }
+
     if (Array.isArray(config.headers)) {
       for (const h of config.headers as Array<{ key: string; value: string }>) {
         if (h.key) {

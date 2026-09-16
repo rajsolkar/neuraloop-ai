@@ -95,10 +95,13 @@ function seedInMemoryWorkflowsIfEmpty() {
 }
 
 export class WorkflowService {
-  static async listWorkflows(): Promise<Workflow[]> {
+  static async listWorkflows(userId?: string | null): Promise<Workflow[]> {
     if (isDatabaseConfigured()) {
       try {
+        const whereClause = userId ? { OR: [{ userId }, { userId: null }] } : {};
+
         const records = await prisma.workflow.findMany({
+          where: whereClause,
           orderBy: { updatedAt: "desc" },
           include: {
             versions: {
@@ -125,7 +128,6 @@ export class WorkflowService {
             publishedVersionNumber: item.publishedVersionNumber,
             activeVersionId: item.activeVersionId,
             activeVersionNumber: item.activeVersionNumber,
-            webhookSecret: item.webhookSecret,
             nodes: clean.nodes,
             edges: clean.edges,
           };
@@ -141,7 +143,7 @@ export class WorkflowService {
     );
   }
 
-  static async createWorkflow(rawInput?: unknown): Promise<Workflow> {
+  static async createWorkflow(rawInput?: unknown, userId?: string | null): Promise<Workflow> {
     const parsed = CreateWorkflowInputSchema.parse(rawInput ?? {});
     const now = new Date();
     const iso = now.toISOString();
@@ -170,6 +172,7 @@ export class WorkflowService {
         const record = await prisma.workflow.create({
           data: {
             id: workflowId,
+            userId: userId ?? null,
             name,
             description,
             status,
@@ -225,7 +228,7 @@ export class WorkflowService {
     return workflow;
   }
 
-  static async getWorkflow(id: string): Promise<Workflow | null> {
+  static async getWorkflow(id: string, userId?: string | null): Promise<Workflow | null> {
     if (isDatabaseConfigured()) {
       try {
         const record = await prisma.workflow.findUnique({
@@ -239,6 +242,9 @@ export class WorkflowService {
         });
 
         if (!record) return null;
+        if (userId && record.userId && record.userId !== userId) {
+          return null; // Enforce strict tenant isolation
+        }
 
         const latestVersion = record.versions[0];
         const definition = (latestVersion?.definition as {
@@ -277,8 +283,8 @@ export class WorkflowService {
     return workflow;
   }
 
-  static async updateWorkflow(id: string, rawInput: unknown): Promise<Workflow> {
-    const existing = await this.getWorkflow(id);
+  static async updateWorkflow(id: string, rawInput: unknown, userId?: string | null): Promise<Workflow> {
+    const existing = await this.getWorkflow(id, userId);
     if (!existing) {
       throw new Error(`Workflow with ID ${id} not found.`);
     }
@@ -389,8 +395,8 @@ export class WorkflowService {
     return updatedWorkflow;
   }
 
-  static async duplicateWorkflow(id: string): Promise<Workflow> {
-    const source = await this.getWorkflow(id);
+  static async duplicateWorkflow(id: string, userId?: string | null): Promise<Workflow> {
+    const source = await this.getWorkflow(id, userId);
     if (!source) {
       throw new Error(`Cannot duplicate missing workflow with ID ${id}`);
     }
@@ -409,16 +415,24 @@ export class WorkflowService {
       target: idMap.get(edge.target) ?? edge.target,
     }));
 
-    return this.createWorkflow({
-      name: `${source.name} (copy)`,
-      description: source.description,
-      status: "draft",
-      nodes: sanitizeNodes(nodes),
-      edges: sanitizeEdges(edges),
-    });
+    return this.createWorkflow(
+      {
+        name: `${source.name} (copy)`,
+        description: source.description,
+        status: "draft",
+        nodes: sanitizeNodes(nodes),
+        edges: sanitizeEdges(edges),
+      },
+      userId,
+    );
   }
 
-  static async deleteWorkflow(id: string): Promise<boolean> {
+  static async deleteWorkflow(id: string, userId?: string | null): Promise<boolean> {
+    const existing = await this.getWorkflow(id, userId);
+    if (!existing) {
+      return false;
+    }
+
     if (isDatabaseConfigured()) {
       try {
         await prisma.workflow.delete({
@@ -437,7 +451,12 @@ export class WorkflowService {
     return existed;
   }
 
-  static async getWorkflowVersions(workflowId: string): Promise<{ id: string; version: number; createdAt: string }[]> {
+  static async getWorkflowVersions(workflowId: string, userId?: string | null): Promise<{ id: string; version: number; createdAt: string }[]> {
+    const existing = await this.getWorkflow(workflowId, userId);
+    if (!existing) {
+      return [];
+    }
+
     if (isDatabaseConfigured()) {
       try {
         const records = await prisma.workflowVersion.findMany({

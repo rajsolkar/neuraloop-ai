@@ -2,15 +2,41 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { WorkflowService } from "@/lib/workflow/workflow-service";
+import { requireAuthUser } from "@/lib/auth/get-auth-user";
 import { enqueueExecution } from "@/lib/queue/execution-queue";
 import { makeId } from "@/lib/utils";
+import { limitWorkflowExecution, createRateLimitResponse } from "@/lib/security/rate-limit";
+import { checkExecutionConcurrency } from "@/lib/security/concurrency-limit";
 
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
+  const { userId, errorResponse } = await requireAuthUser();
+  if (errorResponse) return errorResponse;
+
+  // 1. Rate Limiting Protection (30 req/min per user)
+  const rateLimitResult = await limitWorkflowExecution(request, userId);
+  if (!rateLimitResult.success) {
+    return createRateLimitResponse(rateLimitResult);
+  }
+
+  // 2. Execution Concurrency Protection (Max 5 active executions per user)
+  const concurrencyCheck = await checkExecutionConcurrency(userId, 5);
+  if (!concurrencyCheck.allowed && concurrencyCheck.response) {
+    return concurrencyCheck.response;
+  }
+
   const { id: workflowId } = await context.params;
   try {
+    const workflow = await WorkflowService.getWorkflow(workflowId, userId);
+    if (!workflow) {
+      return NextResponse.json(
+        { error: `WORKFLOW_NOT_FOUND: Workflow '${workflowId}' not found.` },
+        { status: 404 },
+      );
+    }
+
     let body: Record<string, unknown> = {};
     try {
       body = (await request.json()) as Record<string, unknown>;
@@ -50,25 +76,19 @@ export async function POST(
     }
 
     if (!versionId) {
-      const canonical = await WorkflowService.getWorkflow(workflowId);
-      if (!canonical) {
-        return NextResponse.json(
-          { error: `WORKFLOW_NOT_FOUND: Workflow '${workflowId}' not found.` },
-          { status: 404 },
-        );
-      }
       versionId = `ver-fallback-${workflowId}`;
     }
 
     const executionId = `exec-${makeId("x")}`;
     const startedAt = new Date();
 
-    // 1. Create WorkflowExecution record in Neon PostgreSQL with status "queued"
+    // 1. Create WorkflowExecution record in Neon PostgreSQL with status "queued" and userId
     if (process.env.DATABASE_URL) {
       try {
         await prisma.workflowExecution.create({
           data: {
             id: executionId,
+            userId,
             workflowId,
             workflowVersionId: versionId,
             status: "queued",

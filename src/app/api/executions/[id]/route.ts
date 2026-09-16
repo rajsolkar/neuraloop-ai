@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAuthUser } from "@/lib/auth/get-auth-user";
 
 const NODE_TYPE_TITLES: Record<string, string> = {
   "manual-trigger": "Manual Trigger",
@@ -18,6 +19,9 @@ export async function GET(
   _request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
+  const { userId, errorResponse } = await requireAuthUser();
+  if (errorResponse) return errorResponse;
+
   const { id: executionId } = await context.params;
 
   if (!process.env.DATABASE_URL) {
@@ -40,7 +44,7 @@ export async function GET(
       },
     });
 
-    if (!execution) {
+    if (!execution || (userId && execution.userId && execution.userId !== userId)) {
       return NextResponse.json({ error: `Execution with ID '${executionId}' not found.` }, { status: 404 });
     }
 

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, Trash2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { KeyValuePair, Condition, ConditionOperator } from "@/lib/workflow/config-schemas";
+import { CreateCredentialDialog } from "@/components/credentials/create-credential-dialog";
 
 export function FormField({
   label,
@@ -186,13 +187,83 @@ export function ConditionBuilder({
   );
 }
 
-export function CredentialNotice({ provider }: { provider: string }) {
+export function CredentialSelect({
+  provider,
+  value,
+  onChange,
+  label = "Credential",
+}: {
+  provider: string;
+  value?: string;
+  onChange: (credentialId: string) => void;
+  label?: string;
+}) {
+  const [credentials, setCredentials] = React.useState<Array<{ id: string; name: string; provider: string; maskedValue: string }>>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [dialogOpen, setDialogOpen] = React.useState(false);
+
+  const loadCredentials = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/credentials");
+      const data = await res.json();
+      setCredentials(data.credentials || []);
+    } catch {
+      setCredentials([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadCredentials();
+  }, [loadCredentials]);
+
+  const matchingCreds = credentials.filter((c) => {
+    const p = c.provider.toLowerCase();
+    const req = provider.toLowerCase();
+    if (req === "openai" || req === "anthropic" || req === "gemini") {
+      return p === req || p === "openai" || p === "anthropic" || p === "gemini" || p === "custom";
+    }
+    return p === req || p === "custom";
+  });
+
   return (
-    <div className="flex items-center gap-2 rounded-md border border-amber/30 bg-amber/10 px-3 py-2 text-[11px] text-amber">
-      <ShieldAlert className="h-4 w-4 shrink-0" />
-      <span>
-        <strong>{provider} Credentials</strong> will be connected in a future phase.
-      </span>
-    </div>
+    <FormField label={label} description={`Select encrypted ${provider} credential`}>
+      <div className="flex items-center gap-2">
+        <select
+          value={value || ""}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-9 flex-1 rounded-md border border-border bg-canvas px-2.5 text-xs text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+        >
+          <option value="">-- Use Environment Fallback ({provider.toUpperCase()}_API_KEY) --</option>
+          {matchingCreds.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name} ({c.maskedValue})
+            </option>
+          ))}
+        </select>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setDialogOpen(true)}
+          className="h-9 px-2 text-xs shrink-0"
+          title="Add New Credential"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      <CreateCredentialDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        defaultProvider={provider}
+        onSuccess={(newCred) => {
+          loadCredentials();
+          onChange(newCred.id);
+        }}
+      />
+    </FormField>
   );
 }
