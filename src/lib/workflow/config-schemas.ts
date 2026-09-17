@@ -33,21 +33,61 @@ export type Condition = z.infer<typeof ConditionSchema>;
 // Node-Specific Config Schemas
 // ------------------------------------------------------------------
 
-// HTTP Request Config
+// HTTP Request Config Pro
 export const HttpMethodSchema = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 export type HttpMethod = z.infer<typeof HttpMethodSchema>;
+
+export const HttpAuthTypeSchema = z.enum(["vault", "oauth_connection", "none", "bearer", "basic", "api_key", "custom_header"]);
+export type HttpAuthType = z.infer<typeof HttpAuthTypeSchema>;
+
+export const HttpResponseTypeSchema = z.enum(["auto", "json", "text"]);
+export type HttpResponseType = z.infer<typeof HttpResponseTypeSchema>;
 
 export const HttpRequestConfigSchema = z.object({
   method: HttpMethodSchema.default("GET"),
   url: z.string().default(""),
+  authType: HttpAuthTypeSchema.default("vault"),
+  credentialId: z.string().default(""),
+  connectionId: z.string().default(""),
+  connectionProvider: z.string().default("google"),
+  bearerToken: z.string().default(""),
+  basicUsername: z.string().default(""),
+  basicPassword: z.string().default(""),
+  apiKeyName: z.string().default("Authorization"),
+  apiKeyValue: z.string().default(""),
+  apiKeyIn: z.enum(["header", "query"]).default("header"),
+  customHeaderName: z.string().default(""),
+  customHeaderValue: z.string().default(""),
   queryParams: z.array(KeyValuePairSchema).default([]),
   headers: z.array(KeyValuePairSchema).default([]),
-  bodyType: z.enum(["none", "json"]).default("none"),
+  bodyType: z.enum(["none", "json", "form_data", "raw"]).default("none"),
   body: z.string().default(""),
+  formData: z.array(KeyValuePairSchema).default([]),
+  rawBody: z.string().default(""),
+  responseType: HttpResponseTypeSchema.default("auto"),
+  responseKey: z.string().default(""),
+  timeout: z.number().int().min(1000).max(60000).default(10000),
+  retryCount: z.number().int().min(0).max(5).default(0),
+  retryDelay: z.number().int().min(100).max(10000).default(1000),
 });
 export type HttpRequestConfig = z.infer<typeof HttpRequestConfigSchema>;
 
-// OpenAI Config
+// Unified AI Config
+export const AIProviderSchema = z.enum(["openai", "claude", "gemini"]);
+export type AIProvider = z.infer<typeof AIProviderSchema>;
+
+export const AIConfigSchema = z.object({
+  provider: AIProviderSchema.default("openai"),
+  credentialId: z.string().default(""),
+  model: z.string().default("gpt-4o-mini"),
+  prompt: z.string().default(""),
+  temperature: z.number().min(0).max(2).default(0.7),
+  maxTokens: z.number().int().min(1).max(128000).default(1000),
+  systemPrompt: z.string().optional().default(""),
+});
+export type AIConfig = z.infer<typeof AIConfigSchema>;
+
+// OpenAI Config (Legacy alias)
 export const OpenAiModelSchema = z.enum([
   "gpt-4o",
   "gpt-4o-mini",
@@ -56,12 +96,7 @@ export const OpenAiModelSchema = z.enum([
 ]);
 export type OpenAiModel = z.infer<typeof OpenAiModelSchema>;
 
-export const OpenAiConfigSchema = z.object({
-  model: OpenAiModelSchema.default("gpt-4o-mini"),
-  prompt: z.string().default(""),
-  temperature: z.number().min(0).max(2).default(0.7),
-  maxTokens: z.number().int().min(1).max(128000).default(1000),
-});
+export const OpenAiConfigSchema = AIConfigSchema;
 export type OpenAiConfig = z.infer<typeof OpenAiConfigSchema>;
 
 // Slack Config
@@ -177,6 +212,105 @@ export const WebhookResponseConfigSchema = z.object({
 });
 export type WebhookResponseConfig = z.infer<typeof WebhookResponseConfigSchema>;
 
+// Loop Config
+export const LoopConfigSchema = z.object({
+  arrayPath: z.string().default("items"),
+  arrayInput: z.string().optional(),
+});
+export type LoopConfig = z.infer<typeof LoopConfigSchema>;
+
+// Switch Config
+export const SwitchCaseRuleSchema = z.object({
+  id: z.string().default("case_1"),
+  label: z.string().default("case_1"),
+  fieldPath: z.string().default("priority"),
+  operator: z.enum(["equals", "not_equals", "contains", "greater_than", "less_than", "is_true", "is_false"]).default("equals"),
+  value: z.string().default("high"),
+});
+
+export const SwitchConfigSchema = z.object({
+  cases: z.array(SwitchCaseRuleSchema).default([
+    { id: "case_1", label: "case_1", fieldPath: "priority", operator: "equals", value: "high" },
+    { id: "case_2", label: "case_2", fieldPath: "priority", operator: "equals", value: "medium" },
+  ]),
+});
+export type SwitchConfig = z.infer<typeof SwitchConfigSchema>;
+
+// Merge Config
+export const MergeConfigSchema = z.object({
+  mode: z.enum(["append", "combine", "overwrite"]).default("combine"),
+});
+export type MergeConfig = z.infer<typeof MergeConfigSchema>;
+
+// Telegram Config
+export const TelegramConfigSchema = z.object({
+  credentialId: z.string().optional(),
+  chatId: z.string().default(""),
+  operation: z.enum(["send_message", "send_photo"]).default("send_message"),
+  text: z.string().default(""),
+  photoUrl: z.string().optional(),
+});
+export type TelegramConfig = z.infer<typeof TelegramConfigSchema>;
+
+// Discord Config
+export const DiscordConfigSchema = z.object({
+  credentialId: z.string().optional(),
+  webhookUrl: z.string().default(""),
+  operation: z.enum(["send_message", "send_embed"]).default("send_message"),
+  content: z.string().default(""),
+  embedTitle: z.string().optional(),
+  embedDescription: z.string().optional(),
+});
+export type DiscordConfig = z.infer<typeof DiscordConfigSchema>;
+
+// Google Sheets Config
+export const GoogleSheetsConfigSchema = z.object({
+  credentialId: z.string().optional(),
+  spreadsheetId: z.string().default(""),
+  sheetName: z.string().default("Sheet1"),
+  range: z.string().default("A1:Z100"),
+  operation: z.enum(["read_rows", "append_row"]).default("read_rows"),
+  rowValues: z.string().optional(),
+});
+export type GoogleSheetsConfig = z.infer<typeof GoogleSheetsConfigSchema>;
+
+// Transform Config
+export const TransformOperationSchema = z.enum([
+  "add_field",
+  "remove_field",
+  "rename_field",
+  "keep_fields",
+  "set_default_values",
+  "merge_objects",
+  "flatten_json",
+  "extract_nested",
+  "date_format",
+  "string_format",
+  "math_operation",
+  "json_parse_stringify",
+]);
+export type TransformOperation = z.infer<typeof TransformOperationSchema>;
+
+export const TransformConfigSchema = z.object({
+  operation: TransformOperationSchema.default("add_field"),
+  key: z.string().default("fieldName"),
+  value: z.string().default("sampleValue"),
+  targetPath: z.string().default(""),
+  newKey: z.string().default(""),
+  keepKeys: z.array(z.string()).default([]),
+  defaultValues: z.array(KeyValuePairSchema).default([]),
+  mergeSources: z.array(z.string()).default([]),
+  extractPaths: z.array(z.string()).default([]),
+  dateFormat: z.enum(["iso", "timestamp", "locale_date"]).default("iso"),
+  stringOp: z.enum(["uppercase", "lowercase", "trim", "concat", "slice", "replace"]).default("uppercase"),
+  param1: z.string().default(""),
+  param2: z.string().default(""),
+  mathOp: z.enum(["add", "subtract", "multiply", "divide", "round", "floor", "ceil"]).default("add"),
+  operand: z.number().default(0),
+  jsonMode: z.enum(["parse", "stringify"]).default("parse"),
+});
+export type TransformConfig = z.infer<typeof TransformConfigSchema>;
+
 // ------------------------------------------------------------------
 // Map of Definition ID -> Default Config & Zod Schema
 // ------------------------------------------------------------------
@@ -186,7 +320,8 @@ export const NODE_CONFIG_SCHEMAS: Record<string, z.ZodTypeAny> = {
   webhook: WebhookConfigSchema,
   schedule: ScheduleConfigSchema,
   "http-request": HttpRequestConfigSchema,
-  openai: OpenAiConfigSchema,
+  ai: AIConfigSchema,
+  openai: AIConfigSchema,
   slack: SlackConfigSchema,
   email: EmailConfigSchema,
   code: CodeConfigSchema,
@@ -195,6 +330,13 @@ export const NODE_CONFIG_SCHEMAS: Record<string, z.ZodTypeAny> = {
   filter: FilterConfigSchema,
   "set-variable": SetVariableConfigSchema,
   delay: DelayConfigSchema,
+  loop: LoopConfigSchema,
+  switch: SwitchConfigSchema,
+  merge: MergeConfigSchema,
+  telegram: TelegramConfigSchema,
+  discord: DiscordConfigSchema,
+  "google-sheets": GoogleSheetsConfigSchema,
+  transform: TransformConfigSchema,
 };
 
 export function getDefaultNodeConfig(definitionId: string): Record<string, unknown> {

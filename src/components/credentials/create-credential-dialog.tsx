@@ -17,10 +17,16 @@ interface CreateCredentialDialogProps {
 }
 
 const PROVIDERS = [
-  { value: "openai", label: "OpenAI API", icon: "🤖" },
-  { value: "anthropic", label: "Anthropic Claude", icon: "🧠" },
-  { value: "gemini", label: "Google Gemini", icon: "✨" },
+  { value: "openai-api-key", label: "OpenAI API Key", icon: "🤖" },
+  { value: "claude-api-key", label: "Claude API Key", icon: "🧠" },
+  { value: "gemini-api-key", label: "Gemini API Key", icon: "✨" },
+  { value: "openai", label: "OpenAI API (Legacy)", icon: "🤖" },
+  { value: "anthropic", label: "Anthropic Claude (Legacy)", icon: "🧠" },
+  { value: "gemini", label: "Google Gemini (Legacy)", icon: "✨" },
   { value: "slack", label: "Slack Bot Token", icon: "💬" },
+  { value: "telegram-bot-token", label: "Telegram Bot Token", icon: "✈️" },
+  { value: "discord-webhook", label: "Discord Webhook", icon: "🎮" },
+  { value: "google-sheets", label: "Google Sheets / API Key", icon: "📊" },
   { value: "smtp", label: "Email / SMTP Server", icon: "✉️" },
   { value: "custom", label: "Custom API Key / Header", icon: "🔑" },
 ];

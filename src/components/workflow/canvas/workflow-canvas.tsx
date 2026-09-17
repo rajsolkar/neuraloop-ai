@@ -12,7 +12,7 @@ import {
   type EdgeMouseHandler,
   type NodeMouseHandler,
 } from "@xyflow/react";
-import { ListPlus, PanelBottomOpen, Sparkles } from "lucide-react";
+import { ListPlus, PanelBottomOpen, Sparkles, X, Lightbulb, Plus, Zap } from "lucide-react";
 import { useEditorStore } from "@/store/editor-store";
 import { NODE_TYPES } from "@/components/workflow/nodes/workflow-node";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AiGeneratorModal } from "@/components/workflow/ai/ai-generator-modal";
+import { Mascot } from "@/components/mascot/mascot";
+import { MascotBubble } from "@/components/mascot/mascot-bubble";
 
 interface WorkflowCanvasProps {
   flowContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -214,37 +216,119 @@ export function WorkflowCanvas({
         />
       </ReactFlow>
 
-      {/* Empty Canvas Prompt Overlay */}
+      {/* Dismissible Onboarding Banner */}
+      {typeof window !== "undefined" && !localStorage.getItem("nori_onboarding_dismissed") && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 bg-zinc-900/90 border border-emerald-500/30 text-zinc-100 text-xs px-4 py-2 rounded-full shadow-lg backdrop-blur-sm">
+          <Mascot mood="happy" size="xs" animate={false} />
+          <div className="flex items-center gap-2 font-medium">
+            <span className="text-emerald-400 font-semibold">Nori Guide:</span>
+            <span>1. Add Trigger → 2. Add AI Node → 3. Connect Edges → 4. Click Test Run</span>
+          </div>
+          <button
+            onClick={() => {
+              localStorage.setItem("nori_onboarding_dismissed", "true");
+              // trigger rerender
+              setContextMenu(null);
+            }}
+            className="text-zinc-400 hover:text-white p-0.5 ml-1"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* AI Workflow Suggestions Bar (When canvas has nodes) */}
+      {nodes.length > 0 && (
+        <div className="absolute bottom-4 left-4 z-20 pointer-events-auto flex items-center gap-3 bg-zinc-900/95 border border-zinc-700/80 rounded-2xl px-4 py-2.5 shadow-xl text-xs text-zinc-200">
+          <Mascot mood="thinking" size="xs" animate={true} />
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-emerald-400">Nori Copilot:</span>
+            <span>
+              {nodes[nodes.length - 1]?.data?.definitionId === "ai"
+                ? "Want me to add a Telegram notification step?"
+                : nodes[nodes.length - 1]?.data?.definitionId === "manual-trigger" || nodes[nodes.length - 1]?.data?.definitionId === "webhook"
+                ? "Want me to add an AI processing node?"
+                : "Most workflows add Google Sheets or HTTP Request next."}
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              const lastNode = nodes[nodes.length - 1];
+              const posX = lastNode ? lastNode.position.x + 240 : 250;
+              const posY = lastNode ? lastNode.position.y : 150;
+              const targetDef = lastNode?.data?.definitionId === "ai" ? "telegram" : "ai";
+              addNode(targetDef, { x: posX, y: posY });
+            }}
+            className="h-7 text-xs bg-emerald-950/40 hover:bg-emerald-900/60 border-emerald-500/40 text-emerald-300 gap-1 font-semibold"
+          >
+            <Plus className="w-3 h-3" /> Add Step
+          </Button>
+        </div>
+      )}
+
+      {/* Smart Empty Canvas Overlay */}
       {nodes.length === 0 && !isDragOver && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-          <div className="pointer-events-auto flex flex-col items-center gap-3 rounded-2xl border border-border bg-surface/90 backdrop-blur-xs p-6 shadow-xl text-center max-w-sm">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/15 text-accent-ink">
-              <Sparkles className="h-6 w-6" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-ink">Canvas is Empty</h3>
-              <p className="text-xs text-ink-faint mt-1">
-                Describe a workflow in natural language or drag nodes from the library to begin.
+          <div className="pointer-events-auto flex flex-col items-center gap-4 rounded-3xl border border-zinc-800 bg-zinc-950/85 backdrop-blur-md p-8 shadow-2xl text-center max-w-md">
+            <Mascot
+              mood="default"
+              size="lg"
+              message="What do you want to automate today?"
+              bubblePosition="top"
+              animate={true}
+            />
+
+            <div className="mt-2">
+              <h3 className="text-base font-bold text-zinc-100">Smart Automation Canvas</h3>
+              <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                Choose a starter template or describe your automation goal in plain English.
               </p>
             </div>
-            <div className="flex items-center gap-2 mt-1">
+
+            {/* Starter Template Chips */}
+            <div className="grid grid-cols-2 gap-2 w-full mt-1">
+              {[
+                { title: "Lead Qualification", prompt: "Webhook -> AI -> Switch -> Telegram" },
+                { title: "Content Factory", prompt: "Schedule -> AI -> Google Sheets" },
+                { title: "Support Ticket Router", prompt: "Webhook -> AI -> Switch" },
+                { title: "Research Assistant", prompt: "Google Sheets -> Loop -> AI" },
+              ].map((chip, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setAiModalOpen(true)}
+                  className="flex flex-col items-start p-2.5 rounded-xl border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 hover:border-emerald-500/40 text-left transition-all group"
+                >
+                  <span className="text-xs font-semibold text-zinc-200 group-hover:text-emerald-400 flex items-center gap-1">
+                    <Zap className="w-3 h-3 text-emerald-400" />
+                    {chip.title}
+                  </span>
+                  <span className="text-[10px] text-zinc-400 mt-0.5 font-mono truncate w-full">
+                    {chip.prompt}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-3 w-full mt-2">
               <Button
                 variant="primary"
                 size="sm"
                 onClick={() => setAiModalOpen(true)}
-                className="text-xs gap-1.5"
+                className="flex-1 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-950/40"
               >
                 <Sparkles className="h-3.5 w-3.5" />
-                Generate with AI
+                Generate with Nori AI
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={onShowLibrary}
-                className="text-xs gap-1.5"
+                className="flex-1 text-xs gap-1.5 border-zinc-700 text-zinc-300 hover:bg-zinc-800"
               >
                 <ListPlus className="h-3.5 w-3.5" />
-                Open Library
+                Browse Nodes
               </Button>
             </div>
           </div>

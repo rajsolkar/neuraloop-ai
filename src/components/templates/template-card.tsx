@@ -115,8 +115,9 @@ export function TemplateCard({
               </Badge>
             )}
             {template.isOfficial && (
-              <Badge variant="outline" className="text-[10px] bg-accent/10 text-accent-ink border-accent/30">
-                Official
+              <Badge variant="outline" className="text-[10px] bg-emerald-500/15 text-emerald-400 border-emerald-500/30 flex items-center gap-1 font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Nori Choice
               </Badge>
             )}
           </div>

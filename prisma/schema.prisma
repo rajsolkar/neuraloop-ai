@@ -212,3 +212,27 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model OAuthConnection {
+  id              String    @id @default(uuid())
+  userId          String?   // Clerk User ID
+  organizationId  String?   // Clerk Org ID
+  provider        String    // google, github, slack
+  accountEmail    String?
+  accountName     String?
+  accountAvatar   String?
+  scopes          Json?
+  credentialId    String    // References Vault Credential storing encrypted tokens
+  status          String    @default("active") // active, expired, revoked
+  lastRefreshedAt DateTime?
+  expiresAt       DateTime?
+  lastUsedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([provider])
+  @@index([status])
+  @@map("oauth_connections")
+}
+

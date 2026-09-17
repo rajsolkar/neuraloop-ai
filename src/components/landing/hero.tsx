@@ -4,6 +4,8 @@ import Link from "next/link";
 import { ArrowRight, Zap, ShieldCheck, Cpu, Play, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+import { Mascot } from "@/components/mascot/mascot";
+
 export function LandingHero() {
   return (
     <section className="relative overflow-hidden pt-12 pb-16 md:pt-20 md:pb-24">
@@ -15,6 +17,17 @@ export function LandingHero() {
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-3xl text-center">
+          {/* Mascot Companion Badge Header */}
+          <div className="flex flex-col items-center mb-4">
+            <Mascot
+              mood="happy"
+              size="sm"
+              message="Meet Nori, your AI Workflow Companion! 🚀"
+              bubblePosition="top"
+              className="mb-2"
+            />
+          </div>
+
           {/* Release Badge */}
           <div className="inline-flex items-center gap-2 rounded-full border border-border-strong bg-surface px-3.5 py-1.5 text-xs font-semibold text-ink shadow-xs transition-transform hover:scale-[1.02]">
             <span className="flex h-2 w-2 rounded-full bg-accent animate-ping" />

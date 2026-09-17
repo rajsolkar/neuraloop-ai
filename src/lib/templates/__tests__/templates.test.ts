@@ -26,7 +26,7 @@ describe("Phase 14: Template Marketplace & One-Click Cloning Test Suite", () => 
         type: "neuraloop-node",
         position: { x: 400, y: 100 },
         data: {
-          definitionId: "openai",
+          definitionId: "ai",
           label: "Generate Text",
           description: "LLM action",
           category: "action",

@@ -30,7 +30,7 @@ function resetStore() {
 
 describe("node library", () => {
   it("exposes a healthy registry of definitions", () => {
-    expect(NODE_DEFINITIONS.length).toBe(13);
+    expect(NODE_DEFINITIONS.length).toBe(20);
   });
 
   it("has unique definition ids", () => {
@@ -98,13 +98,13 @@ describe("editor-store", () => {
 
     const node = useEditorStore
       .getState()
-      .addNode("openai", { x: 40, y: 40 });
+      .addNode("ai", { x: 40, y: 40 });
 
     const state = useEditorStore.getState();
     expect(node).not.toBeNull();
     expect(state.nodes).toHaveLength(1);
     expect(state.nodes[0]).toMatchObject({
-      data: { definitionId: "openai", category: "action" },
+      data: { definitionId: "ai", category: "action" },
     });
     expect(state.nodes[0].selected).toBe(true);
     expect(state.selectedNodeId).toBe(node?.id);

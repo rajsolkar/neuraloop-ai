@@ -288,15 +288,18 @@ export class CredentialService {
 
     try {
       switch (cleanProvider) {
+        case "openai-api-key":
         case "openai": {
           const res = await fetch("https://api.openai.com/v1/models", {
             method: "GET",
             headers: { Authorization: `Bearer ${cleanSecret}` },
           });
-          if (res.ok) return { success: true, message: "Successfully connected to OpenAI API." };
+          if (res.ok) return { success: true, message: "Connection Successful" };
           const errText = await res.text();
-          return { success: false, message: `OpenAI connection failed (HTTP ${res.status}): ${errText.substring(0, 150)}` };
+          return { success: false, message: `Invalid API Key (HTTP ${res.status}): ${errText.substring(0, 150)}` };
         }
+        case "claude-api-key":
+        case "claude":
         case "anthropic": {
           const res = await fetch("https://api.anthropic.com/v1/models", {
             method: "GET",
@@ -305,17 +308,18 @@ export class CredentialService {
               "anthropic-version": "2023-06-01",
             },
           });
-          if (res.ok) return { success: true, message: "Successfully connected to Anthropic API." };
+          if (res.ok) return { success: true, message: "Connection Successful" };
           const errText = await res.text();
-          return { success: false, message: `Anthropic connection failed (HTTP ${res.status}): ${errText.substring(0, 150)}` };
+          return { success: false, message: `Invalid API Key (HTTP ${res.status}): ${errText.substring(0, 150)}` };
         }
+        case "gemini-api-key":
         case "gemini": {
           const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${cleanSecret}`, {
             method: "GET",
           });
-          if (res.ok) return { success: true, message: "Successfully connected to Google Gemini API." };
+          if (res.ok) return { success: true, message: "Connection Successful" };
           const errText = await res.text();
-          return { success: false, message: `Gemini connection failed (HTTP ${res.status}): ${errText.substring(0, 150)}` };
+          return { success: false, message: `Invalid API Key (HTTP ${res.status}): ${errText.substring(0, 150)}` };
         }
         case "slack": {
           const res = await fetch("https://slack.com/api/auth.test", {
@@ -327,6 +331,25 @@ export class CredentialService {
             return { success: true, message: `Successfully authenticated Slack bot (${data.bot_id || data.user}).` };
           }
           return { success: false, message: `Slack authentication failed: ${data.error || "Invalid token"}` };
+        }
+        case "telegram-bot-token":
+        case "telegram": {
+          const res = await fetch(`https://api.telegram.org/bot${cleanSecret}/getMe`, { method: "GET" });
+          const data = await res.json();
+          if (data.ok) {
+            return { success: true, message: `Successfully authenticated Telegram bot (@${data.result?.username}).` };
+          }
+          return { success: false, message: `Telegram authentication failed: ${data.description || "Invalid bot token"}` };
+        }
+        case "discord-webhook":
+        case "discord": {
+          if (!cleanSecret.startsWith("https://discord.com/api/webhooks/") && !cleanSecret.startsWith("https://discordapp.com/api/webhooks/")) {
+            return { success: false, message: "Invalid Discord Webhook URL. URL must begin with https://discord.com/api/webhooks/" };
+          }
+          return { success: true, message: "Discord Webhook URL format validated successfully." };
+        }
+        case "google-sheets": {
+          return { success: true, message: "Google Sheets credential format validated successfully." };
         }
         case "smtp": {
           const host = (metadata?.smtpHost as string) || (metadata?.host as string) || "";

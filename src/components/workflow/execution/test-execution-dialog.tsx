@@ -9,6 +9,7 @@ import { useEditorStore } from "@/store/editor-store";
 import { useToastStore } from "@/store/toast-store";
 import type { WorkflowExecutionRecord } from "@/lib/execution/types";
 import { ExecutionResultTimeline, type TimelineNodeExecution } from "./execution-result-timeline";
+import { Mascot } from "@/components/mascot/mascot";
 
 interface TestExecutionDialogProps {
   open: boolean;
@@ -176,6 +177,43 @@ export function TestExecutionDialog({ open, onOpenChange }: TestExecutionDialogP
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col gap-5">
+          {/* Nori Execution Status Feedback Card */}
+          <div className="flex items-center gap-4 p-3 rounded-xl border border-zinc-800 bg-zinc-950/60">
+            <Mascot
+              mood={
+                executing
+                  ? "working"
+                  : executionResult?.status === "success"
+                  ? "celebrating"
+                  : executionResult?.status === "failed" || errorMsg
+                  ? "warning"
+                  : "default"
+              }
+              size="sm"
+              animate={executing}
+            />
+            <div className="flex-1 text-xs">
+              <span className="font-semibold text-zinc-100 block">
+                {executing
+                  ? "Nori is running nodes..."
+                  : executionResult?.status === "success"
+                  ? "Execution Successful! 🎉"
+                  : executionResult?.status === "failed" || errorMsg
+                  ? "Execution Needs Attention"
+                  : "Ready for Test Execution"}
+              </span>
+              <span className="text-zinc-400 text-[11px] block mt-0.5">
+                {executing
+                  ? "Monitoring node inputs, outputs, and queue execution in real time."
+                  : executionResult?.status === "success"
+                  ? `Completed in ${executionResult.duration || 0}ms across ${timelineNodeExecutions.length} step(s).`
+                  : executionResult?.status === "failed" || errorMsg
+                  ? "Check error messages below to refine node config."
+                  : "Enter optional trigger payload JSON below and click Enqueue & Run."}
+              </span>
+            </div>
+          </div>
+
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs font-medium text-ink">Execution Input JSON (Optional)</Label>
             <Textarea

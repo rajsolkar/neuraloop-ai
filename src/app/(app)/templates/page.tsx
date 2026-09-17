@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TemplateCard, type TemplateCardData } from "@/components/templates/template-card";
+import { MascotEmptyState } from "@/components/mascot/mascot-empty-state";
 
 const CATEGORIES = [
   "All",
@@ -159,13 +160,18 @@ export default function TemplatesPage() {
             </div>
 
             {filteredTemplates.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-border rounded-xl bg-surface">
-                <LayoutTemplate className="h-10 w-10 text-ink-faint mb-2" />
-                <h3 className="text-sm font-bold text-ink">No templates found</h3>
-                <p className="text-xs text-ink-faint mt-1 max-w-sm">
-                  Try adjusting your search query or selecting another category filter.
-                </p>
-              </div>
+              <MascotEmptyState
+                title="No workflow blueprints found"
+                description="Try adjusting your search query or selecting another category filter. Nori can help you build custom automations!"
+                mood="thinking"
+                action={{
+                  label: "Clear filters",
+                  onClick: () => {
+                    setSearch("");
+                    setActiveCategory("All");
+                  },
+                }}
+              />
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredTemplates.map((tpl) => (

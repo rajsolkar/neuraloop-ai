@@ -236,7 +236,7 @@ export function CredentialSelect({
           onChange={(e) => onChange(e.target.value)}
           className="h-9 flex-1 rounded-md border border-border bg-canvas px-2.5 text-xs text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
         >
-          <option value="">-- Use Environment Fallback ({provider.toUpperCase()}_API_KEY) --</option>
+          <option value="">-- Select Credential (Required) --</option>
           {matchingCreds.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name} ({c.maskedValue})

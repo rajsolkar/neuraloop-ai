@@ -25,7 +25,7 @@ describe("Phase 4 Node Executors & SSRF Protection", () => {
       "webhook",
       "schedule",
       "http-request",
-      "openai",
+      "ai",
       "slack",
       "email",
       "code",
@@ -209,9 +209,9 @@ describe("Phase 4 Node Executors & SSRF Protection", () => {
 
         const ctx = mockContext();
 
-        const openaiRes = await openaiExec.execute(createWorkflowNode("openai", { x: 0, y: 0 }), {}, ctx);
+        const openaiRes = await openaiExec.execute(createWorkflowNode("ai", { x: 0, y: 0 }), {}, ctx);
         expect(openaiRes.status).toBe("failed");
-        expect(openaiRes.error).toContain("CREDENTIAL_NOT_CONFIGURED");
+        expect(openaiRes.error).toContain("AI credential is required.");
 
         const slackRes = await slackExec.execute(createWorkflowNode("slack", { x: 0, y: 0 }), {}, ctx);
         expect(slackRes.status).toBe("failed");

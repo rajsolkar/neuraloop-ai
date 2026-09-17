@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { NODE_DEFINITION_MAP } from "./node-definitions";
+import { getNodeDefinition } from "./node-definitions";
 import { validateNodeConfig } from "./config-schemas";
 
 export const NodeCategorySchema = z.enum(["trigger", "action", "logic"]);
@@ -7,7 +7,7 @@ export const WorkflowStatusSchema = z.enum(["draft", "published", "archived"]);
 
 export const WorkflowNodeDataSchema = z
   .object({
-    definitionId: z.string().refine((defId) => Boolean(NODE_DEFINITION_MAP[defId]), {
+    definitionId: z.string().refine((defId) => Boolean(getNodeDefinition(defId)), {
       message: "Unsupported or unregistered node definition ID",
     }),
     label: z.string().min(1, "Node label cannot be empty"),

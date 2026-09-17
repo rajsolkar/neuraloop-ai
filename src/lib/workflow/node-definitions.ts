@@ -1,4 +1,5 @@
 import {
+  Brain,
   Clock3,
   Filter,
   GitBranch,
@@ -12,6 +13,7 @@ import {
   Variable,
   Code,
   ArrowRightCircle,
+  Wand2,
   type LucideIcon,
 } from "lucide-react";
 import type { NodeCategory } from "@/types/workflow";
@@ -74,13 +76,13 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     isTrigger: false,
   },
   {
-    id: "openai",
-    name: "OpenAI",
+    id: "ai",
+    name: "AI Agent / LLM",
     category: "action",
-    description: "Run a prompt through a model.",
-    icon: Sparkles,
-    accentColor: "#7c5cf0",
-    defaultLabel: "OpenAI",
+    description: "Run prompts using OpenAI, Claude, or Gemini LLMs.",
+    icon: Brain,
+    accentColor: "#8b5cf6",
+    defaultLabel: "AI Agent",
     isTrigger: false,
   },
   {
@@ -163,10 +165,82 @@ export const NODE_DEFINITIONS: NodeDefinition[] = [
     defaultLabel: "Delay",
     isTrigger: false,
   },
+  {
+    id: "telegram",
+    name: "Telegram",
+    category: "action",
+    description: "Send messages or photos via Telegram bot.",
+    icon: Send,
+    accentColor: "#0088cc",
+    defaultLabel: "Telegram",
+    isTrigger: false,
+  },
+  {
+    id: "discord",
+    name: "Discord",
+    category: "action",
+    description: "Send messages or embeds to Discord webhooks.",
+    icon: MessageSquare,
+    accentColor: "#5865F2",
+    defaultLabel: "Discord",
+    isTrigger: false,
+  },
+  {
+    id: "google-sheets",
+    name: "Google Sheets",
+    category: "action",
+    description: "Read or append rows in Google Sheets spreadsheets.",
+    icon: ArrowRightCircle,
+    accentColor: "#0F9D58",
+    defaultLabel: "Google Sheets",
+    isTrigger: false,
+  },
+  {
+    id: "loop",
+    name: "Loop",
+    category: "logic",
+    description: "Iterate over array elements sequentially.",
+    icon: Timer,
+    accentColor: "#f59e0b",
+    defaultLabel: "Loop",
+    isTrigger: false,
+  },
+  {
+    id: "switch",
+    name: "Switch",
+    category: "logic",
+    description: "Route workflow execution across multiple branch paths.",
+    icon: GitBranch,
+    accentColor: "#10b981",
+    defaultLabel: "Switch",
+    isTrigger: false,
+  },
+  {
+    id: "merge",
+    name: "Merge",
+    category: "logic",
+    description: "Merge multiple execution branches into a single output.",
+    icon: Filter,
+    accentColor: "#6366f1",
+    defaultLabel: "Merge",
+    isTrigger: false,
+  },
+  {
+    id: "transform",
+    name: "Transform",
+    category: "logic",
+    description: "Manipulate, reshape, format, and compute data structures.",
+    icon: Wand2,
+    accentColor: "#a855f7",
+    defaultLabel: "Transform",
+    isTrigger: false,
+  },
 ];
 
-export const NODE_DEFINITION_MAP: Record<string, NodeDefinition> =
-  Object.fromEntries(NODE_DEFINITIONS.map((def) => [def.id, def]));
+export const NODE_DEFINITION_MAP: Record<string, NodeDefinition> = {
+  ...Object.fromEntries(NODE_DEFINITIONS.map((def) => [def.id, def])),
+  openai: NODE_DEFINITIONS.find((def) => def.id === "ai")!,
+};
 
 export const NODE_DEFINITIONS_BY_CATEGORY: Record<
   NodeCategory,
@@ -184,7 +258,8 @@ for (const def of NODE_DEFINITIONS) {
 export { NODE_CATEGORY_ORDER } from "./node-colors";
 
 export function getNodeDefinition(defId: string): NodeDefinition | undefined {
-  return NODE_DEFINITION_MAP[defId];
+  if (defId === "openai") return NODE_DEFINITIONS.find((def) => def.id === "ai");
+  return NODE_DEFINITIONS.find((def) => def.id === defId);
 }
 
 export const NODE_DEFINITION_CATEGORY_LABELS: Record<NodeCategory, string> = {
