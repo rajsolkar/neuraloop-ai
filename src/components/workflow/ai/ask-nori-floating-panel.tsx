@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Mascot } from "@/components/mascot/mascot";
-import { Sparkles, Send, X, Bot, ArrowRight, Minimize2, Maximize2 } from "lucide-react";
+import { Sparkles, Send, X, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { MascotMood } from "@/components/mascot/mascot-assets";
@@ -23,18 +23,29 @@ export function AskNoriFloatingPanel({
   const [isOpen, setIsOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
-  const [mood, setMood] = useState<MascotMood>("thinking");
+  const [mood, setMood] = useState<MascotMood>("default");
   const [messages, setMessages] = useState<Array<{ sender: "user" | "nori"; text: string }>>([
     {
       sender: "nori",
-      text: "Hi! I'm Nori. Tell me what to change in your workflow (e.g., 'Add Discord alerts', 'Replace Telegram with Slack', 'Add retry logic').",
+      text: "How can I help you improve or build this workflow?",
     },
   ]);
 
-  const handleSend = async () => {
-    if (!prompt.trim() || loading) return;
+  // Keyboard shortcut Ctrl+K or Cmd+K to toggle Ask Nori
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
-    const userMsg = prompt.trim();
+  const handleSendPrompt = async (userMsg: string) => {
+    if (!userMsg.trim() || loading) return;
+
     setPrompt("");
     setMessages((prev) => [...prev, { sender: "user", text: userMsg }]);
     setLoading(true);
@@ -50,96 +61,124 @@ export function AskNoriFloatingPanel({
         }),
       });
 
-      if (!res.ok) {
-        throw new Error("Refinement API failed");
-      }
-
-      const data = await res.json();
-      if (data.modified && data.workflow) {
-        onApplyRefinement(data.workflow, data.refinementSummary);
-        setMessages((prev) => [
-          ...prev,
-          { sender: "nori", text: `✅ ${data.refinementSummary}` },
-        ]);
-        setMood("happy");
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          { sender: "nori", text: `I understood '${userMsg}'. ${data.refinementSummary || "Graph updated."}` },
-        ]);
-        setMood("default");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.modified && data.workflow) {
+          onApplyRefinement(data.workflow, data.refinementSummary);
+          setMessages((prev) => [
+            ...prev,
+            { sender: "nori", text: `✅ ${data.refinementSummary}` },
+          ]);
+          setMood("happy");
+          setLoading(false);
+          return;
+        }
       }
     } catch {
-      // Local fallback refiner if backend route isn't hit
-      const localRes = WorkflowRefiner.refineWorkflow(currentWorkflow, userMsg);
-      if (localRes.modified) {
-        onApplyRefinement(localRes.workflow, localRes.refinementSummary);
-        setMessages((prev) => [
-          ...prev,
-          { sender: "nori", text: `✅ ${localRes.refinementSummary}` },
-        ]);
-        setMood("happy");
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          { sender: "nori", text: `Processed: ${localRes.refinementSummary}` },
-        ]);
-        setMood("thinking");
-      }
-    } finally {
-      setLoading(false);
+      // Ignore API errors and fallback to local refiner
     }
+
+    // Local fallback refiner
+    const localRes = WorkflowRefiner.refineWorkflow(currentWorkflow, userMsg);
+    if (localRes.modified) {
+      onApplyRefinement(localRes.workflow, localRes.refinementSummary);
+      setMessages((prev) => [
+        ...prev,
+        { sender: "nori", text: `✅ ${localRes.refinementSummary}` },
+      ]);
+      setMood("happy");
+    } else {
+      setMessages((prev) => [
+        ...prev,
+        { sender: "nori", text: `I understood '${userMsg}'. ${localRes.refinementSummary}` },
+      ]);
+      setMood("default");
+    }
+
+    setLoading(false);
   };
+
+  const quickSuggestions = [
+    { label: "• Optimize workflow", prompt: "Optimize workflow architecture" },
+    { label: "• Explain workflow", prompt: "Explain how this workflow operates" },
+    { label: "• Add error handling", prompt: "Add failure notification" },
+    { label: "• Reduce AI costs", prompt: "Reduce AI costs by 40%" },
+  ];
 
   if (!isOpen) {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-[#A7B3A1] hover:bg-[#97a391] text-slate-950 font-bold rounded-full shadow-2xl border-2 border-slate-700/30 transition-all hover:scale-105 ${className}`}
+        className={`fixed bottom-5 right-5 z-50 flex items-center gap-2 px-3.5 py-2 bg-surface hover:bg-canvas text-ink text-xs font-medium rounded-full shadow-md border border-border transition-all hover:scale-105 ${className}`}
       >
-        <Mascot mood="happy" size="xs" animate />
+        <span className="flex items-center gap-1 font-mono text-[10px] px-1.5 py-0.5 rounded bg-canvas text-ink-soft border border-border">
+          ⌘K
+        </span>
         <span>Ask Nori</span>
-        <Sparkles className="w-4 h-4 text-amber-800" />
+        <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
       </button>
     );
   }
 
   return (
     <div
-      className={`fixed bottom-6 right-6 z-50 w-80 md:w-96 bg-[#A7B3A1] border-2 border-slate-700/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-900 animate-in fade-in zoom-in-95 duration-200 ${className}`}
+      className={`fixed bottom-5 right-5 z-50 w-80 bg-surface border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden text-ink animate-in fade-in zoom-in-95 duration-150 ${className}`}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-slate-900 text-white border-b border-slate-800">
+      <div className="flex items-center justify-between px-3.5 py-2.5 bg-canvas border-b border-border">
         <div className="flex items-center gap-2">
-          <Mascot mood={mood} size="xs" animate />
+          <Mascot mood={mood} size="xs" animate={false} />
           <div>
-            <div className="font-bold text-xs flex items-center gap-1">
-              Ask Nori <Sparkles className="w-3 h-3 text-amber-400" />
+            <div className="font-semibold text-xs flex items-center gap-1 text-ink">
+              Nori Assistant <Sparkles className="w-3 h-3 text-emerald-600" />
             </div>
-            <div className="text-[10px] text-slate-300">AI Workflow Copilot</div>
           </div>
         </div>
-        <button
-          onClick={() => setIsOpen(false)}
-          className="text-slate-400 hover:text-white p-1 rounded-md"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] font-mono text-ink-faint px-1.5 py-0.5 rounded bg-surface border border-border">
+            ⌘K
+          </span>
+          <button
+            onClick={() => setIsOpen(false)}
+            className="text-ink-faint hover:text-ink p-1 rounded-md transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Quick Action Suggestions List */}
+      <div className="p-3 border-b border-border bg-canvas/50 flex flex-col gap-1">
+        <span className="text-[10px] uppercase font-semibold tracking-wider text-ink-faint px-1">
+          Suggested Actions
+        </span>
+        <div className="grid grid-cols-2 gap-1.5 mt-1">
+          {quickSuggestions.map((s, idx) => (
+            <button
+              key={idx}
+              onClick={() => handleSendPrompt(s.prompt)}
+              disabled={loading}
+              className="text-left text-xs px-2.5 py-1.5 rounded-lg border border-border bg-surface hover:bg-canvas text-ink-soft hover:text-ink transition-colors font-medium truncate"
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Messages Scroll Area */}
-      <div className="p-3 space-y-2.5 max-h-64 overflow-y-auto text-xs">
+      <div className="p-3 space-y-2 max-h-56 overflow-y-auto text-xs">
         {messages.map((m, idx) => (
           <div
             key={idx}
-            className={`flex gap-2 ${m.sender === "user" ? "justify-end" : "justify-start"}`}
+            className={`flex gap-1.5 ${m.sender === "user" ? "justify-end" : "justify-start"}`}
           >
-            {m.sender === "nori" && <Bot className="w-4 h-4 text-slate-800 shrink-0 mt-0.5" />}
+            {m.sender === "nori" && <Bot className="w-3.5 h-3.5 text-ink-soft shrink-0 mt-1" />}
             <div
-              className={`p-2.5 rounded-xl leading-relaxed max-w-[85%] ${
+              className={`p-2 rounded-xl leading-relaxed max-w-[85%] text-xs ${
                 m.sender === "user"
-                  ? "bg-slate-900 text-white rounded-br-none"
-                  : "bg-white/60 text-slate-900 border border-white/40 rounded-bl-none shadow-xs font-medium"
+                  ? "bg-ink text-surface rounded-br-none"
+                  : "bg-canvas text-ink border border-border rounded-bl-none font-medium"
               }`}
             >
               {m.text}
@@ -149,19 +188,19 @@ export function AskNoriFloatingPanel({
       </div>
 
       {/* Input Footer */}
-      <div className="p-3 bg-slate-900/10 border-t border-slate-700/20 flex gap-2 items-center">
+      <div className="p-2.5 bg-canvas border-t border-border flex gap-2 items-center">
         <Input
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          placeholder="Ask Nori to refine workflow..."
-          className="bg-white/80 border-slate-400 text-xs text-slate-900 focus:bg-white"
+          onKeyDown={(e) => e.key === "Enter" && handleSendPrompt(prompt)}
+          placeholder="Ask anything about this workflow..."
+          className="bg-surface border-border text-xs text-ink h-8"
         />
         <Button
-          onClick={handleSend}
+          onClick={() => handleSendPrompt(prompt)}
           disabled={loading || !prompt.trim()}
           size="sm"
-          className="bg-slate-900 hover:bg-slate-800 text-white px-3 shrink-0"
+          className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 shrink-0"
         >
           <Send className="w-3.5 h-3.5" />
         </Button>

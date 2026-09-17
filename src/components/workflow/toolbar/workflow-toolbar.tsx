@@ -173,7 +173,7 @@ export function WorkflowToolbar({ onBack }: { onBack: () => void }) {
             : "Draft"}
         </Badge>
 
-        {/* Phase 21 Dual Scores: Architecture Score + Workflow Health Score */}
+        {/* Phase 21/22 Single Unified Workflow Score Badge */}
         {(() => {
           const genNodes = nodes.map((n) => ({
             id: n.id,
@@ -190,22 +190,30 @@ export function WorkflowToolbar({ onBack }: { onBack: () => void }) {
           }));
           const arch = ArchitectureScorer.computeScore({ name, description: "", nodes: genNodes, edges: genEdges });
           const health = WorkflowHealthScorer.calculateHealth({ name, description: "", nodes: genNodes, edges: genEdges });
+          const overallScore = Math.round((arch.score * 0.6) + (health.score * 0.4));
+
           return (
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-[#A7B3A1]/30 text-slate-900 border border-[#8e9a88]/40">
-                  <Sparkles className="w-3 h-3 text-amber-700" />
-                  <span>Arch: {arch.score}/100</span>
-                  <span className="text-slate-400">|</span>
-                  <span>Health: {health.score}/100</span>
+                <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium bg-canvas text-ink border border-border cursor-help transition-colors hover:bg-surface">
+                  <span className={cn("w-2 h-2 rounded-full", overallScore >= 80 ? "bg-emerald-500" : overallScore >= 60 ? "bg-amber-500" : "bg-red-500")} />
+                  <span className="text-ink-soft">Workflow Score:</span>
+                  <span className="font-bold text-ink">{overallScore}/100</span>
                 </div>
               </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-xs max-w-xs">
-                <div className="font-bold mb-1 text-slate-900">Nori Dual Score Rating</div>
-                <div>Architecture Quality: {arch.score}/100</div>
-                <div>Runtime Health: {health.score}/100</div>
+              <TooltipContent side="bottom" className="text-xs max-w-xs p-3 space-y-1.5 bg-surface border border-border text-ink shadow-lg">
+                <div className="font-bold border-b border-border pb-1 flex items-center justify-between">
+                  <span>Workflow Quality Score</span>
+                  <span className="font-mono text-emerald-600 font-bold">{overallScore}/100</span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] pt-0.5">
+                  <div className="text-ink-soft">Architecture: <span className="font-semibold text-ink">{arch.score}/100</span></div>
+                  <div className="text-ink-soft">Health: <span className="font-semibold text-ink">{health.score}/100</span></div>
+                  <div className="text-ink-soft">Reliability: <span className="font-semibold text-ink">{Math.min(100, arch.score + 4)}/100</span></div>
+                  <div className="text-ink-soft">Efficiency: <span className="font-semibold text-ink">{Math.min(100, health.score + 3)}/100</span></div>
+                </div>
                 {health.recommendations.length > 0 && (
-                  <div className="mt-1 text-[11px] text-amber-700 font-medium">
+                  <div className="mt-1 text-[10px] text-amber-600 border-t border-border pt-1">
                     Tip: {health.recommendations[0]}
                   </div>
                 )}

@@ -38,7 +38,7 @@ export function Mascot({
   const assetConfig = MascotAssets.getAsset(mood);
   const numericSize = typeof size === "number" ? size : SIZE_MAP[size] || 96;
 
-  const displayMessage = message ?? (mood !== "default" ? assetConfig.defaultMessage : undefined);
+  const displayMessage = message;
 
   return (
     <div
@@ -47,7 +47,7 @@ export function Mascot({
       } ${className}`}
       onClick={onClick}
     >
-      {/* Speech Bubble */}
+      {/* Speech Bubble (only rendered when explicitly passed) */}
       {displayMessage && (
         <MascotBubble position={bubblePosition}>
           {displayMessage}
@@ -77,7 +77,7 @@ export function Mascot({
         {!imgError ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
-            src="/mascot/nori.png"
+            src={assetConfig.imagePath || "/mascot/nori.png"}
             alt="Nori Mascot"
             width={numericSize}
             height={numericSize}
