@@ -265,18 +265,32 @@ export const HttpRequestExecutor: NodeExecutor = {
             status: "failed",
             error: lastError,
             output: outputData,
+            metrics: {
+              url: targetUrl,
+              method,
+              statusCode: response.status,
+              responseTime: duration,
+              responseSize: rawText.length,
+            },
           };
 
           if (is5xx && attemptsLeft > 0) {
             await new Promise((res) => setTimeout(res, retryDelayMs));
             continue;
           }
-          return lastResult;
+          return lastResult!;
         }
 
         return {
           status: "success",
           output: outputData,
+          metrics: {
+            url: targetUrl,
+            method,
+            statusCode: response.status,
+            responseTime: duration,
+            responseSize: rawText.length,
+          },
         };
       } catch (err: unknown) {
         clearTimeout(timeoutId);

@@ -21,6 +21,25 @@ export async function POST(request: Request) {
     }
 
     const prompt = (body.prompt as string) || "";
+    const refinementPrompt = (body.refinementPrompt as string) || "";
+    const currentWorkflow = body.currentWorkflow as Record<string, unknown> | undefined;
+
+    // Phase 20.5: Conversational "Ask Nori" Refinement Route
+    if (refinementPrompt && currentWorkflow) {
+      const refined = WorkflowGenerationService.refineWorkflow(
+        currentWorkflow as unknown as import("@/lib/ai/schema").GeneratedWorkflowData,
+        refinementPrompt,
+      );
+      return NextResponse.json(
+        {
+          message: refined.refinementSummary,
+          workflow: refined.workflow,
+          modified: refined.modified,
+        },
+        { status: 200 },
+      );
+    }
+
     if (!prompt || !prompt.trim()) {
       return NextResponse.json(
         { error: "PROMPT_REQUIRED: Please provide a natural language prompt describing the workflow." },
@@ -28,7 +47,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Extract client IP identifier
     const forwardHeader = request.headers.get("x-forwarded-for");
     const clientIp = forwardHeader ? forwardHeader.split(",")[0].trim() : "local-client";
 
@@ -42,6 +60,11 @@ export async function POST(request: Request) {
       {
         message: "Workflow graph generated successfully",
         workflow: result.workflow,
+        plan: result.plan,
+        explanation: result.explanation,
+        validation: result.validation,
+        optimizations: result.optimizations,
+        architectureScore: result.architectureScore,
         generationId: result.generationId,
         mode: result.mode,
       },

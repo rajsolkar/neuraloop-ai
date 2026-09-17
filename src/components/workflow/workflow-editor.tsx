@@ -18,8 +18,13 @@ import { useEditorStore } from "@/store/editor-store";
 import { useToastStore } from "@/store/toast-store";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, LayoutPanelLeft, Search } from "lucide-react";
-import type { WorkflowNode } from "@/types/workflow";
+import type { WorkflowNode, WorkflowEdge } from "@/types/workflow";
+import { createWorkflowNode } from "@/lib/workflow";
 import { cn } from "@/lib/utils";
+import { MascotCoach } from "@/components/mascot/mascot-coach";
+import { AskNoriFloatingPanel } from "@/components/workflow/ai/ask-nori-floating-panel";
+import { NoriSuggestionsPanel } from "@/components/workflow/ai/nori-suggestions-panel";
+import { useWorkflowStore } from "@/store/workflow-store";
 
 export function WorkflowEditor({ workflowId }: { workflowId: string }) {
   return (
@@ -127,23 +132,117 @@ function EditorInner({ workflowId }: { workflowId: string }) {
           </div>
         </aside>
 
-        <main className="relative min-w-0 flex-1">
-          <WorkflowCanvas
-            flowContainerRef={flowRef}
-            onShowLibrary={() => setMobileLibraryOpen(true)}
-            onShowInspector={() => setMobileInspectorOpen(true)}
-          />
-          {nodes.length === 0 && (
-            <EmptyCanvasOverlay
-              onOpenLibrary={() => setMobileLibraryOpen(true)}
-              onAddNode={() =>
-                addFromLibrary(
-                  "manual-trigger",
-                  getSpawnPosition(),
-                )
-              }
+        <main className="relative min-w-0 flex-1 flex flex-col">
+          {/* Mascot Onboarding Coach Banner */}
+          <div className="p-3 bg-canvas border-b border-border">
+            <MascotCoach />
+          </div>
+
+          <div className="relative flex-1">
+            <WorkflowCanvas
+              flowContainerRef={flowRef}
+              onShowLibrary={() => setMobileLibraryOpen(true)}
+              onShowInspector={() => setMobileInspectorOpen(true)}
             />
-          )}
+
+            {/* Nori 1-Click Suggestions Panel */}
+            {workflowId && (
+              <div className="absolute top-4 right-4 z-20 max-w-sm hidden sm:block">
+                <NoriSuggestionsPanel
+                  currentWorkflow={{
+                    name: useEditorStore.getState().name || "Workflow",
+                    description: useEditorStore.getState().description || "",
+                    nodes: nodes.map((n) => ({
+                      id: n.id,
+                      definitionId: n.data.definitionId as any,
+                      label: n.data.label,
+                      config: (n.data.config as Record<string, unknown>) || {},
+                    })),
+                    edges: useEditorStore.getState().edges.map((e) => ({
+                      id: e.id,
+                      source: e.source,
+                      target: e.target,
+                      sourceHandle: e.sourceHandle || undefined,
+                      targetHandle: e.targetHandle || undefined,
+                    })),
+                  }}
+                  onApplyRefinement={(updated, summary) => {
+                    const { updateWorkflowContent, saveWorkflowToServer } = useWorkflowStore.getState();
+                    const fullNodes: WorkflowNode[] = updated.nodes.map((n, idx) => {
+                      const node = createWorkflowNode(n.definitionId, { x: 250 + idx * 280, y: 150 });
+                      node.id = n.id;
+                      node.data.label = n.label;
+                      const cfg = (n.config && typeof n.config === "object") ? (n.config as Record<string, unknown>) : {};
+                      node.data.config = Object.assign({}, (node.data.config as Record<string, unknown>) || {}, cfg);
+                      return node;
+                    });
+                    const fullEdges: WorkflowEdge[] = updated.edges.map((e, idx) => ({
+                      id: e.id || `e-${idx + 1}`,
+                      source: e.source,
+                      target: e.target,
+                      sourceHandle: e.sourceHandle || "out",
+                      targetHandle: e.targetHandle || "in",
+                    }));
+                    updateWorkflowContent(workflowId, {
+                      nodes: fullNodes,
+                      edges: fullEdges,
+                    });
+                    loadWorkflow(workflowId);
+                    saveWorkflowToServer(workflowId);
+                    toast(summary, { description: "Graph updated by Nori Refiner" });
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Floating Ask Nori Assistant */}
+            {workflowId && (
+              <AskNoriFloatingPanel
+                currentWorkflow={{
+                  name: useEditorStore.getState().name || "Workflow",
+                  description: useEditorStore.getState().description || "",
+                  nodes: nodes.map((n) => ({
+                    id: n.id,
+                    definitionId: n.data.definitionId as any,
+                    label: n.data.label,
+                    config: (n.data.config as Record<string, unknown>) || {},
+                  })),
+                  edges: useEditorStore.getState().edges.map((e) => ({
+                    id: e.id,
+                    source: e.source,
+                    target: e.target,
+                    sourceHandle: e.sourceHandle || undefined,
+                    targetHandle: e.targetHandle || undefined,
+                  })),
+                }}
+                onApplyRefinement={(updated, summary) => {
+                  const { updateWorkflowContent, saveWorkflowToServer } = useWorkflowStore.getState();
+                  const fullNodes: WorkflowNode[] = updated.nodes.map((n, idx) => {
+                    const node = createWorkflowNode(n.definitionId, { x: 250 + idx * 280, y: 150 });
+                    node.id = n.id;
+                    node.data.label = n.label;
+                    const cfg = (n.config && typeof n.config === "object") ? (n.config as Record<string, unknown>) : {};
+                    node.data.config = Object.assign({}, (node.data.config as Record<string, unknown>) || {}, cfg);
+                    return node;
+                  });
+                  const fullEdges: WorkflowEdge[] = updated.edges.map((e, idx) => ({
+                    id: e.id || `e-${idx + 1}`,
+                    source: e.source,
+                    target: e.target,
+                    sourceHandle: e.sourceHandle || "out",
+                    targetHandle: e.targetHandle || "in",
+                  }));
+                  updateWorkflowContent(workflowId, {
+                    nodes: fullNodes,
+                    edges: fullEdges,
+                  });
+                  loadWorkflow(workflowId);
+                  saveWorkflowToServer(workflowId);
+                  toast(summary, { description: "Graph updated by Nori Assistant" });
+                }}
+              />
+            )}
+          </div>
         </main>
 
         <aside className="hidden w-72 shrink-0 flex-col border-l border-border bg-surface lg:flex">
@@ -176,41 +275,7 @@ function EditorInner({ workflowId }: { workflowId: string }) {
   );
 }
 
-function EmptyCanvasOverlay({
-  onOpenLibrary,
-  onAddNode,
-}: {
-  onOpenLibrary: () => void;
-  onAddNode: () => void;
-}) {
-  return (
-    <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center p-6">
-      <div className="pointer-events-auto w-full max-w-sm rounded-xl border border-border bg-surface/95 p-6 text-center shadow-xl backdrop-blur">
-        <span
-          className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-dim text-accent-ink"
-          aria-hidden
-        >
-          <LayoutPanelLeft className="h-5 w-5" />
-        </span>
-        <h3 className="mt-3 text-sm font-semibold text-ink">
-          Start building your workflow
-        </h3>
-        <p className="mt-1 text-xs leading-5 text-ink-soft">
-          Drag a node from the library onto the canvas, or add a trigger to get
-          started.
-        </p>
-        <div className="mt-4 flex items-center justify-center gap-2">
-          <Button variant="primary" onClick={onAddNode}>
-            Add a trigger
-          </Button>
-          <Button variant="outline" onClick={onOpenLibrary}>
-            Open library
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
+
 
 function MobileDrawer({
   side,

@@ -65,6 +65,8 @@ export function WorkflowCanvas({
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [dismissedEmptyCanvas, setDismissedEmptyCanvas] = useState(false);
+  const [dismissedCopilot, setDismissedCopilot] = useState(false);
 
   const handleDragOver = useCallback((event: React.DragEvent) => {
     if (event.dataTransfer.types.includes("application/neuraloop-node")) {
@@ -238,7 +240,7 @@ export function WorkflowCanvas({
       )}
 
       {/* AI Workflow Suggestions Bar (When canvas has nodes) */}
-      {nodes.length > 0 && (
+      {nodes.length > 0 && !dismissedCopilot && (
         <div className="absolute bottom-4 left-4 z-20 pointer-events-auto flex items-center gap-3 bg-[#A7B3A1] border border-[#8A9884] rounded-2xl px-4 py-2.5 shadow-xl text-xs text-zinc-950 font-medium">
           <Mascot mood="thinking" size="xs" animate={true} />
           <div className="flex items-center gap-2">
@@ -265,13 +267,31 @@ export function WorkflowCanvas({
           >
             <Plus className="w-3 h-3" /> Add Step
           </Button>
+          <button
+            type="button"
+            onClick={() => setDismissedCopilot(true)}
+            className="text-zinc-800 hover:text-zinc-950 p-0.5 ml-1"
+            title="Dismiss suggestion"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 
       {/* Smart Empty Canvas Overlay */}
-      {nodes.length === 0 && !isDragOver && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-          <div className="pointer-events-auto flex flex-col items-center gap-4 rounded-3xl border border-[#8A9884] bg-[#A7B3A1] backdrop-blur-md p-8 shadow-2xl text-center max-w-md">
+      {nodes.length === 0 && !isDragOver && !dismissedEmptyCanvas && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-4">
+          <div className="relative pointer-events-auto flex flex-col items-center gap-4 rounded-3xl border border-[#8A9884] bg-[#A7B3A1] backdrop-blur-md p-8 shadow-2xl text-center max-w-md w-full">
+            {/* Close button (X) */}
+            <button
+              type="button"
+              onClick={() => setDismissedEmptyCanvas(true)}
+              className="absolute top-3 right-3 text-zinc-800 hover:text-zinc-950 p-1.5 rounded-lg hover:bg-zinc-900/10 transition-colors"
+              title="Dismiss overlay"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
             <Mascot
               mood="default"
               size="lg"
@@ -324,7 +344,10 @@ export function WorkflowCanvas({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={onShowLibrary}
+                onClick={() => {
+                  addNode("manual-trigger", { x: 250, y: 150 });
+                  onShowLibrary();
+                }}
                 className="flex-1 text-xs gap-1.5 border-zinc-900/30 text-zinc-950 hover:bg-zinc-900/10 font-semibold"
               >
                 <ListPlus className="h-3.5 w-3.5" />

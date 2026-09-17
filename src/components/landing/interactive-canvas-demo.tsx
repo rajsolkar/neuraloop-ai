@@ -270,9 +270,9 @@ export function LandingInteractiveCanvasDemo() {
           {/* Canvas & Inspector Main Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[420px]">
             {/* Interactive Visual Canvas Area */}
-            <div className="lg:col-span-8 p-6 md:p-8 flex flex-col justify-between relative bg-[radial-gradient(#d3cdbc_1px,transparent_1px)] [background-size:16px_16px]">
+            <div className="lg:col-span-8 p-4 sm:p-6 md:p-8 flex flex-col justify-between relative overflow-x-auto bg-[radial-gradient(#d3cdbc_1px,transparent_1px)] [background-size:16px_16px] scrollbar-thin">
               {/* Nodes Sequence Container */}
-              <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-3 my-auto py-6">
+              <div className="flex flex-col md:flex-row items-center justify-start xl:justify-center gap-2 md:gap-2 my-auto py-6 min-w-max">
                 {currentBlueprint.nodes.map((node, idx) => {
                   const Icon = node.icon;
                   const isSelected = selectedNodeId === node.id;
@@ -280,22 +280,22 @@ export function LandingInteractiveCanvasDemo() {
                   const isCompleted = completedSteps.includes(idx);
 
                   return (
-                    <div key={node.id} className="flex flex-col md:flex-row items-center gap-3">
+                    <div key={node.id} className="flex flex-col md:flex-row items-center gap-2 shrink-0">
                       {/* Node Card */}
                       <button
                         onClick={() => setSelectedNodeId(node.id)}
-                        className={`w-64 md:w-52 rounded-xl border p-4 text-left transition-all relative ${
+                        className={`w-60 md:w-40 lg:w-40 xl:w-44 rounded-xl border p-3 text-left transition-all relative shrink-0 ${
                           isSelected
-                            ? "border-accent-ink bg-surface ring-2 ring-accent/60 shadow-md"
-                            : "border-border bg-surface/90 hover:border-border-strong hover:bg-surface"
+                            ? "border-accent-ink bg-surface ring-2 ring-accent/60 shadow-md scale-[1.02]"
+                            : "border-border bg-surface/90 hover:border-border-strong hover:bg-surface hover:scale-[1.01]"
                         } ${
                           isActiveStep ? "animate-bounce ring-2 ring-accent" : ""
                         }`}
                       >
                         {/* Status Indicator */}
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center justify-between mb-1.5">
                           <span
-                            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                            className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
                               node.category === "trigger"
                                 ? "bg-amber/15 text-amber"
                                 : node.category === "logic"
@@ -306,7 +306,7 @@ export function LandingInteractiveCanvasDemo() {
                             {node.category}
                           </span>
                           {isCompleted ? (
-                            <CheckCircle2 className="h-4 w-4 text-success" />
+                            <CheckCircle2 className="h-3.5 w-3.5 text-success" />
                           ) : isActiveStep ? (
                             <span className="h-2 w-2 rounded-full bg-accent animate-ping" />
                           ) : (
@@ -315,26 +315,26 @@ export function LandingInteractiveCanvasDemo() {
                         </div>
 
                         {/* Title & Icon */}
-                        <div className="flex items-center gap-2.5">
-                          <div className="rounded-lg bg-canvas p-2 border border-border">
-                            <Icon className="h-4 w-4 text-ink" />
+                        <div className="flex items-center gap-2">
+                          <div className="rounded-lg bg-canvas p-1.5 border border-border shrink-0">
+                            <Icon className="h-3.5 w-3.5 text-ink" />
                           </div>
-                          <div className="font-bold text-xs text-ink truncate">
+                          <div className="font-bold text-xs text-ink truncate leading-tight">
                             {node.title}
                           </div>
                         </div>
 
                         {/* Footer info */}
-                        <div className="mt-3 pt-2 border-t border-border/60 text-[11px] text-ink-soft truncate font-mono">
+                        <div className="mt-2 pt-1.5 border-t border-border/60 text-[10px] text-ink-soft truncate font-mono">
                           {node.type}
                         </div>
                       </button>
 
                       {/* Arrow Connecting Line */}
                       {idx < currentBlueprint.nodes.length - 1 && (
-                        <div className="flex items-center justify-center py-1 md:py-0">
+                        <div className="flex items-center justify-center py-1 md:py-0 shrink-0">
                           <div
-                            className={`h-6 w-0.5 md:h-0.5 md:w-6 transition-colors ${
+                            className={`h-4 w-0.5 md:h-0.5 md:w-4 transition-colors ${
                               completedSteps.includes(idx)
                                 ? "bg-accent shadow-xs"
                                 : "bg-border-strong"

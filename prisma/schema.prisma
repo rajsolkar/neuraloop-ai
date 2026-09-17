@@ -31,6 +31,7 @@ model Workflow {
   executions             WorkflowExecution[]
   generations            WorkflowGeneration[]
   schedules              WorkflowSchedule[]
+  memories               WorkflowMemory[]
 
   @@index([userId])
   @@index([organizationId])
@@ -60,16 +61,27 @@ model WorkflowExecution {
   organizationId    String?         // Clerk Organization ID
   workflowId        String
   workflowVersionId String
+  workflowName      String?
   parentExecutionId String?         // ID of original execution if this is a replay/retry
   retryCount        Int             @default(0)
   status            String          @default("queued") // queued, running, success, failed, cancelled
   source            String          @default("manual") // manual, webhook, schedule, api
+  triggerType       String?         // manual, webhook, schedule, api
   startedAt         DateTime        @default(now())
   completedAt       DateTime?
   duration          Int?            // in milliseconds
+  totalNodes        Int             @default(0)
+  successfulNodes   Int             @default(0)
+  failedNodes       Int             @default(0)
+  aiTokensIn        Int             @default(0)
+  aiTokensOut       Int             @default(0)
+  aiEstimatedCost   Float           @default(0.0)
+  httpRequestsCount Int             @default(0)
   input             Json?
   output            Json?
   error             String?
+  errorMessage      String?
+  executionData     Json?
   metadata          Json?
   triggerMetadata   Json?
   workflow          Workflow        @relation(fields: [workflowId], references: [id], onDelete: Cascade)
@@ -92,6 +104,7 @@ model NodeExecution {
   executionId String
   nodeId      String
   nodeType    String
+  nodeLabel   String?
   status      String            @default("pending") // pending, running, success, failed, skipped, cancelled
   startedAt   DateTime          @default(now())
   completedAt DateTime?
@@ -99,6 +112,8 @@ model NodeExecution {
   input       Json?
   output      Json?
   error       String?
+  errorMessage String?
+  metrics     Json?             // tokensIn, tokensOut, cost, httpUrl, httpStatus, responseTime, etc.
   attempt     Int               @default(1)
   execution   WorkflowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
@@ -234,5 +249,31 @@ model OAuthConnection {
   @@index([provider])
   @@index([status])
   @@map("oauth_connections")
+}
+
+model WorkflowMemory {
+  id          String   @id @default(uuid())
+  workflowId  String
+  key         String
+  value       Json
+  createdAt   DateTime @default(now())
+
+  workflow    Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([workflowId])
+  @@index([workflowId, key])
+  @@map("workflow_memories")
+}
+
+model TemplateFavorite {
+  id          String   @id @default(uuid())
+  templateId  String
+  userId      String
+  createdAt   DateTime @default(now())
+
+  @@unique([templateId, userId])
+  @@index([userId])
+  @@index([templateId])
+  @@map("template_favorites")
 }
 

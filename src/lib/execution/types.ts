@@ -27,6 +27,7 @@ export interface NodeExecutionResult {
   /** For IF nodes: indicates which handle path was selected ("true" or "false") */
   selectedHandle?: "true" | "false";
   metadata?: Record<string, unknown>;
+  metrics?: Record<string, unknown>;
 }
 
 export interface NodeExecutor {

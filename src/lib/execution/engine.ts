@@ -10,6 +10,8 @@ import type {
   WorkflowExecutionRecord,
 } from "./types";
 import { makeId } from "@/lib/utils";
+import { ExecutionRecorder } from "./execution-recorder";
+import { ErrorAnalyzer } from "./error-analyzer";
 
 function isDatabaseConfigured(): boolean {
   return Boolean(process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== "");
@@ -221,6 +223,12 @@ export class WorkflowEngine {
     const processedNodes = new Set<string>();
     const skippedNodes = new Set<string>();
 
+    const cachedNodeOutputs = (options.metadata?.cachedNodeOutputs as Record<string, Record<string, unknown>>) || {};
+    let aiTokensIn = 0;
+    let aiTokensOut = 0;
+    let aiEstimatedCost = 0.0;
+    let httpRequestsCount = 0;
+
     while (queue.length > 0) {
       const currentId = queue.shift()!;
       if (processedNodes.has(currentId)) continue;
@@ -232,6 +240,7 @@ export class WorkflowEngine {
       const nodeStartTime = Date.now();
       const nodeStartedAtIso = new Date(nodeStartTime).toISOString();
       const nodeExecId = `nexec-${makeId("nx")}`;
+      const nodeLabel = currentNode.data.label || currentNode.data.definitionId;
 
       if (skippedNodes.has(currentId)) {
         context.nodeStatuses[currentId] = "skipped";
@@ -246,10 +255,37 @@ export class WorkflowEngine {
           attempt: 1,
         });
 
-        // Downstream nodes of a skipped node are also marked skipped
         const outgoing = edges.filter((e) => e.source === currentId);
         for (const edge of outgoing) {
           skippedNodes.add(edge.target);
+          if (!processedNodes.has(edge.target)) {
+            queue.push(edge.target);
+          }
+        }
+        continue;
+      }
+
+      // Check if node has pre-cached output from partial replay
+      if (cachedNodeOutputs[currentId]) {
+        const cachedOutput = cachedNodeOutputs[currentId];
+        context.nodeStatuses[currentId] = "success";
+        context.nodeOutputs[currentId] = cachedOutput;
+
+        nodeExecutionRecords.push({
+          id: nodeExecId,
+          nodeId: currentId,
+          nodeType: currentNode.data.definitionId,
+          status: "success",
+          startedAt: nodeStartedAtIso,
+          completedAt: nodeStartedAtIso,
+          duration: 0,
+          input: (context.nodeInputs[currentId] || {}) as Record<string, unknown>,
+          output: cachedOutput,
+          attempt: 1,
+        });
+
+        const outgoing = edges.filter((e) => e.source === currentId);
+        for (const edge of outgoing) {
           if (!processedNodes.has(edge.target)) {
             queue.push(edge.target);
           }
@@ -262,7 +298,7 @@ export class WorkflowEngine {
       context.nodeStatuses[currentId] = "running";
 
       const nodeConfig = (currentNode.data.config as Record<string, unknown>) ?? {};
-      const maxRetries = typeof nodeConfig.maxRetries === "number" ? nodeConfig.maxRetries : 1; // default 1 retry
+      const maxRetries = typeof nodeConfig.maxRetries === "number" ? nodeConfig.maxRetries : 1;
       const maxAttempts = 1 + maxRetries;
 
       let attempt = 1;
@@ -301,10 +337,22 @@ export class WorkflowEngine {
       const nodeDuration = nodeEndTime - nodeStartTime;
       const nodeCompletedAtIso = new Date(nodeEndTime).toISOString();
 
+      // Track AI & HTTP metrics if present in executor result
+      if (currentNode.data.definitionId === "http-request") {
+        httpRequestsCount++;
+      }
+      if (result.metrics) {
+        if (typeof result.metrics.tokensIn === "number") aiTokensIn += result.metrics.tokensIn;
+        if (typeof result.metrics.tokensOut === "number") aiTokensOut += result.metrics.tokensOut;
+        if (typeof result.metrics.cost === "number") aiEstimatedCost += result.metrics.cost;
+      }
+
       if (result.status === "failed") {
         context.nodeStatuses[currentId] = "failed";
         overallStatus = "failed";
-        overallError = result.error || `Node ${currentNode.data.label} failed execution`;
+        overallError = result.error || `Node ${nodeLabel} failed execution`;
+
+        const humanError = ErrorAnalyzer.analyze(overallError, currentNode.data.definitionId);
 
         nodeExecutionRecords.push({
           id: nodeExecId,
@@ -316,7 +364,7 @@ export class WorkflowEngine {
           duration: nodeDuration,
           input: (context.nodeInputs[currentId] || {}) as Record<string, unknown>,
           output: (result.output || {}) as Record<string, unknown>,
-          error: result.error,
+          error: humanError.explanation,
           attempt,
         });
 
@@ -348,7 +396,6 @@ export class WorkflowEngine {
         if (currentNode.data.definitionId === "if") {
           const selectedHandle = result.selectedHandle || "true";
           if (edge.sourceHandle && edge.sourceHandle !== selectedHandle) {
-            // Mark the non-selected branch path as skipped
             skippedNodes.add(edge.target);
           }
         }
@@ -362,6 +409,10 @@ export class WorkflowEngine {
     const totalDuration = endTime - startTime;
     const completedAtIso = new Date(endTime).toISOString();
 
+    const totalNodes = nodeExecutionRecords.length;
+    const successfulNodes = nodeExecutionRecords.filter((r) => r.status === "success").length;
+    const failedNodes = nodeExecutionRecords.filter((r) => r.status === "failed").length;
+
     // Persist NodeExecutions & update single WorkflowExecution in Neon PostgreSQL
     if (isDatabaseConfigured()) {
       try {
@@ -371,6 +422,7 @@ export class WorkflowEngine {
             executionId,
             nodeId: r.nodeId,
             nodeType: r.nodeType,
+            nodeLabel: nodes.find((n) => n.id === r.nodeId)?.data?.label || r.nodeType,
             status: r.status,
             startedAt: new Date(r.startedAt),
             completedAt: r.completedAt ? new Date(r.completedAt) : undefined,
@@ -378,6 +430,7 @@ export class WorkflowEngine {
             input: sanitizeSecrets(r.input || {}) as unknown as Prisma.InputJsonValue,
             output: sanitizeSecrets(r.output || {}) as unknown as Prisma.InputJsonValue,
             error: r.error ? String(sanitizeSecrets(r.error)) : undefined,
+            errorMessage: r.error ? String(sanitizeSecrets(r.error)) : undefined,
             attempt: r.attempt,
           })),
         });
@@ -386,10 +439,20 @@ export class WorkflowEngine {
           where: { id: executionId },
           data: {
             status: overallStatus,
+            workflowName: canonicalWorkflow.name,
+            triggerType: (options.metadata?.source as string) || "manual",
             completedAt: new Date(endTime),
             duration: totalDuration,
+            totalNodes,
+            successfulNodes,
+            failedNodes,
+            aiTokensIn,
+            aiTokensOut,
+            aiEstimatedCost,
+            httpRequestsCount,
             output: sanitizeSecrets(context.nodeOutputs) as unknown as Prisma.InputJsonValue,
             error: overallError ? String(sanitizeSecrets(overallError)) : undefined,
+            errorMessage: overallError ? String(sanitizeSecrets(overallError)) : undefined,
           },
         });
       } catch (err) {

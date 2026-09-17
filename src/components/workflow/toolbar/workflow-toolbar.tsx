@@ -29,6 +29,8 @@ import { PublishModal } from "@/components/workflow/publishing/publish-modal";
 import { WebhookManagementPanel } from "@/components/workflow/publishing/webhook-management-panel";
 import { VersionHistoryDialog } from "@/components/workflow/publishing/version-history-dialog";
 import { computeVersionDiff } from "@/lib/workflow/version-diff";
+import { ArchitectureScorer } from "@/lib/ai/architecture-scorer";
+import { WorkflowHealthScorer } from "@/lib/ai/workflow-health";
 import type { WorkflowVersionRecord } from "@/types/workflow";
 
 export function WorkflowToolbar({ onBack }: { onBack: () => void }) {
@@ -170,6 +172,47 @@ export function WorkflowToolbar({ onBack }: { onBack: () => void }) {
             ? "Archived"
             : "Draft"}
         </Badge>
+
+        {/* Phase 21 Dual Scores: Architecture Score + Workflow Health Score */}
+        {(() => {
+          const genNodes = nodes.map((n) => ({
+            id: n.id,
+            definitionId: n.data.definitionId as any,
+            label: n.data.label,
+            config: (n.data.config as Record<string, unknown>) || {},
+          }));
+          const genEdges = edges.map((e) => ({
+            id: e.id,
+            source: e.source,
+            target: e.target,
+            sourceHandle: e.sourceHandle || undefined,
+            targetHandle: e.targetHandle || undefined,
+          }));
+          const arch = ArchitectureScorer.computeScore({ name, description: "", nodes: genNodes, edges: genEdges });
+          const health = WorkflowHealthScorer.calculateHealth({ name, description: "", nodes: genNodes, edges: genEdges });
+          return (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="hidden md:flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-[#A7B3A1]/30 text-slate-900 border border-[#8e9a88]/40">
+                  <Sparkles className="w-3 h-3 text-amber-700" />
+                  <span>Arch: {arch.score}/100</span>
+                  <span className="text-slate-400">|</span>
+                  <span>Health: {health.score}/100</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs max-w-xs">
+                <div className="font-bold mb-1 text-slate-900">Nori Dual Score Rating</div>
+                <div>Architecture Quality: {arch.score}/100</div>
+                <div>Runtime Health: {health.score}/100</div>
+                {health.recommendations.length > 0 && (
+                  <div className="mt-1 text-[11px] text-amber-700 font-medium">
+                    Tip: {health.recommendations[0]}
+                  </div>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          );
+        })()}
 
         {/* Phase 7.1 Draft Changes Detection Badge */}
         {hasUnpublishedChanges && (

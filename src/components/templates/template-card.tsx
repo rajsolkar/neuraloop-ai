@@ -18,6 +18,8 @@ import {
   Eye,
   CheckCircle2,
   Copy,
+  Heart,
+  Star,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,6 +35,7 @@ export interface TemplateCardData {
   featured?: boolean;
   usageCount?: number;
   isOfficial?: boolean;
+  isFavorite?: boolean;
 }
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {

@@ -2,6 +2,7 @@ import type { WorkflowNode } from "@/types/workflow";
 import type { ExecutionContext, NodeExecutionResult, NodeExecutor } from "../types";
 import { resolveExpression } from "../expression";
 import { CredentialService } from "@/lib/security/credential-service";
+import { WorkflowMemoryService } from "@/lib/ai/workflow-memory";
 
 export const AIExecutor: NodeExecutor = {
   definitionId: "ai",
@@ -60,10 +61,23 @@ export const AIExecutor: NodeExecutor = {
       ...input,
     };
 
-    const rawPrompt = (config.prompt as string) || "Hello";
-    const prompt = resolveExpression(rawPrompt, contextData);
+    const mode = (config.mode as string) || "standard"; // "standard" | "planner"
+    const responseType = (config.responseType as string) || "text"; // "text" | "json"
+    const jsonSchema = (config.jsonSchema as string) || "";
+    const memoryScope = (config.memoryScope as string) || "disabled"; // "disabled" | "workflow"
 
-    const rawSystemPrompt = (config.systemPrompt as string) || "";
+    let rawPrompt = (config.prompt as string) || "Hello";
+    
+    // Modify prompt if in Planner Mode
+    if (mode === "planner") {
+      rawPrompt = `Decompose the following prompt into a structured execution step breakdown with 'steps' array of clear actions:\n${rawPrompt}`;
+    }
+
+    const prompt = resolveExpression(rawPrompt, contextData);
+    let rawSystemPrompt = (config.systemPrompt as string) || "";
+    if (responseType === "json" || mode === "planner") {
+      rawSystemPrompt += "\nYou MUST return valid JSON format.";
+    }
     const systemPrompt = rawSystemPrompt ? resolveExpression(rawSystemPrompt, contextData) : "";
 
     const model = (config.model as string) || "gpt-4o-mini";
@@ -166,16 +180,70 @@ export const AIExecutor: NodeExecutor = {
         }
       }
 
+      const tokensIn = inputTokens || Math.ceil((prompt.length + (systemPrompt?.length || 0)) / 4);
+      const tokensOut = outputTokens || Math.ceil(textOutput.length / 4);
+
+      // Calculate estimated cost
+      let costPer1MIn = 0.50;
+      let costPer1MOut = 1.50;
+      if (model.includes("gpt-4o-mini")) {
+        costPer1MIn = 0.15;
+        costPer1MOut = 0.60;
+      } else if (model.includes("gpt-4o")) {
+        costPer1MIn = 2.50;
+        costPer1MOut = 10.00;
+      } else if (model.includes("claude")) {
+        costPer1MIn = 3.00;
+        costPer1MOut = 15.00;
+      } else if (model.includes("gemini")) {
+        costPer1MIn = 0.075;
+        costPer1MOut = 0.30;
+      }
+
+      const cost = parseFloat(
+        ((tokensIn / 1000000) * costPer1MIn + (tokensOut / 1000000) * costPer1MOut).toFixed(6),
+      );
+
+      // Parse output if JSON or Planner mode
+      let parsedOutput: Record<string, unknown> | null = null;
+      if (responseType === "json" || mode === "planner") {
+        try {
+          // Clean potential markdown ```json blocks
+          const cleanedText = textOutput.replace(/```json\n?|\n?```/g, "").trim();
+          parsedOutput = JSON.parse(cleanedText);
+        } catch {
+          parsedOutput = { rawText: textOutput, parseError: "Failed to parse JSON" };
+        }
+      }
+
+      const finalOutputData = {
+        text: textOutput,
+        json: parsedOutput,
+        mode,
+        responseType,
+        provider: cleanProvider,
+        model,
+        usage: {
+          inputTokens: tokensIn,
+          outputTokens: tokensOut,
+          estimatedCost: cost,
+        },
+      };
+
+      // Persist to WorkflowMemory if workflow memory scope is enabled
+      if (memoryScope === "workflow" && context.workflowId) {
+        await WorkflowMemoryService.setMemory(context.workflowId, `node_output_${node.id}`, finalOutputData);
+      }
+
       return {
         status: "success",
-        output: {
-          text: textOutput,
+        output: finalOutputData,
+        metrics: {
           provider: cleanProvider,
           model,
-          usage: {
-            inputTokens,
-            outputTokens,
-          },
+          tokensIn,
+          tokensOut,
+          cost,
         },
       };
     } catch (err: unknown) {

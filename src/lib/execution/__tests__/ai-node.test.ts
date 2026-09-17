@@ -91,13 +91,14 @@ describe("Phase 15.5: Unified AI Node & BYOK Architecture", () => {
     const result = await AIExecutor.execute(node, {}, ctx);
 
     expect(result.status).toBe("success");
-    expect(result.output).toEqual({
+    expect(result.output).toMatchObject({
       text: "OpenAI response text",
       provider: "openai",
       model: "gpt-4o-mini",
       usage: {
         inputTokens: 15,
         outputTokens: 25,
+        estimatedCost: 0.000017,
       },
     });
 
@@ -137,13 +138,14 @@ describe("Phase 15.5: Unified AI Node & BYOK Architecture", () => {
     const result = await AIExecutor.execute(node, {}, ctx);
 
     expect(result.status).toBe("success");
-    expect(result.output).toEqual({
+    expect(result.output).toMatchObject({
       text: "Claude response text",
       provider: "claude",
       model: "claude-3-5-sonnet-20241022",
       usage: {
         inputTokens: 20,
         outputTokens: 40,
+        estimatedCost: 0.00066,
       },
     });
 
@@ -184,13 +186,14 @@ describe("Phase 15.5: Unified AI Node & BYOK Architecture", () => {
     const result = await AIExecutor.execute(node, {}, ctx);
 
     expect(result.status).toBe("success");
-    expect(result.output).toEqual({
+    expect(result.output).toMatchObject({
       text: "Gemini response text",
       provider: "gemini",
       model: "gemini-2.5-flash",
       usage: {
         inputTokens: 10,
         outputTokens: 30,
+        estimatedCost: 0.00001,
       },
     });
   });

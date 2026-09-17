@@ -853,6 +853,50 @@ function AIForm({
           className="text-xs"
         />
       </FormField>
+
+      <FormField label="Execution Mode">
+        <FormSelect
+          value={(config.mode as string) || "standard"}
+          onChange={(val) => onChange({ ...config, mode: val })}
+          options={[
+            { value: "standard", label: "Standard Mode (Direct LLM Response)" },
+            { value: "planner", label: "Planner Mode (Structured Execution Breakdown)" },
+          ]}
+        />
+      </FormField>
+
+      <FormField label="Response Format">
+        <FormSelect
+          value={(config.responseType as string) || "text"}
+          onChange={(val) => onChange({ ...config, responseType: val })}
+          options={[
+            { value: "text", label: "Plain Text Output" },
+            { value: "json", label: "Structured JSON Output" },
+          ]}
+        />
+      </FormField>
+
+      {((config.responseType as string) === "json" || (config.mode as string) === "planner") && (
+        <FormField label="JSON Schema (Optional Validation)">
+          <Textarea
+            placeholder='{"type": "object", "properties": {"summary": {"type": "string"}}}'
+            value={(config.jsonSchema as string) || ""}
+            onChange={(e) => onChange({ ...config, jsonSchema: e.target.value })}
+            className="text-xs font-mono h-16"
+          />
+        </FormField>
+      )}
+
+      <FormField label="Memory Scope">
+        <FormSelect
+          value={(config.memoryScope as string) || "disabled"}
+          onChange={(val) => onChange({ ...config, memoryScope: val })}
+          options={[
+            { value: "disabled", label: "Disabled (Stateless Output)" },
+            { value: "workflow", label: "Workflow Scope (Persist to Workflow Memory)" },
+          ]}
+        />
+      </FormField>
     </div>
   );
 }

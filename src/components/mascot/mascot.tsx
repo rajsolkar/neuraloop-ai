@@ -77,12 +77,12 @@ export function Mascot({
         {!imgError ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
-            src="/mascot/nori.jpg"
+            src="/mascot/nori.png"
             alt="Nori Mascot"
             width={numericSize}
             height={numericSize}
             onError={() => setImgError(true)}
-            className="object-contain rounded-2xl drop-shadow-lg transition-all duration-300"
+            className="object-contain drop-shadow-md transition-all duration-300"
             style={{ width: numericSize, height: numericSize }}
           />
         ) : (
