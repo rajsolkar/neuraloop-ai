@@ -8,12 +8,11 @@ import { Button } from "@/components/ui/button";
 
 function NeuraloopMark() {
   return (
-    <span className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-ink shadow-sm">
-      <span aria-hidden className="relative flex h-3.5 w-3.5">
-        <span className="h-3.5 w-3.5 rounded-sm bg-accent animate-pulse" />
-        <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-accent" />
-      </span>
-    </span>
+    <img
+      src="/logo.png"
+      alt="Neuraloop Logo"
+      className="h-8 w-8 rounded-lg object-cover shadow-sm border border-border/40"
+    />
   );
 }
 

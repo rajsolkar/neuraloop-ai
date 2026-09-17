@@ -25,12 +25,7 @@ export function LandingHero() {
 
           {/* Main Title */}
           <h1 className="mt-6 text-4xl font-extrabold tracking-tight text-ink sm:text-5xl md:text-6xl leading-[1.12]">
-            Visual Automation for{" "}
-            <span className="relative whitespace-nowrap text-ink">
-              <span className="relative z-10 underline decoration-accent decoration-wavy decoration-2">
-                Modern Teams
-              </span>
-            </span>
+            Visual Automation for Modern Teams
           </h1>
 
           {/* Subtitle */}

@@ -31,6 +31,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <Menu className="h-4 w-4" />
           </Button>
+          <img
+            src="/logo.png"
+            alt="Neuraloop Logo"
+            className="h-6 w-6 rounded-md object-cover border border-border/40"
+          />
           <span className="text-sm font-bold text-ink">Neuraloop</span>
           <Button
             variant="primary"

@@ -35,12 +35,11 @@ const NAV_ITEMS: NavItem[] = [
 
 function NeuraloopMark() {
   return (
-    <span className="relative flex h-7 w-7 items-center justify-center rounded-lg bg-ink">
-      <span aria-hidden className="relative flex h-3 w-3">
-        <span className="h-3 w-3 rounded-sm bg-accent" />
-        <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-accent" />
-      </span>
-    </span>
+    <img
+      src="/logo.png"
+      alt="Neuraloop Logo"
+      className="h-7 w-7 rounded-md object-cover shadow-xs border border-border/40"
+    />
   );
 }
 
