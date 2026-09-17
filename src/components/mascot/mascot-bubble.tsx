@@ -24,16 +24,16 @@ export function MascotBubble({
   };
 
   const arrowClasses = {
-    top: "top-full left-1/2 -translate-x-1/2 border-t-zinc-900 border-x-transparent border-b-transparent border-[6px]",
-    bottom: "bottom-full left-1/2 -translate-x-1/2 border-b-zinc-900 border-x-transparent border-t-transparent border-[6px]",
-    left: "left-full top-1/2 -translate-y-1/2 border-l-zinc-900 border-y-transparent border-r-transparent border-[6px]",
-    right: "right-full top-1/2 -translate-y-1/2 border-r-zinc-900 border-y-transparent border-l-transparent border-[6px]",
+    top: "top-full left-1/2 -translate-x-1/2 border-t-[#A7B3A1] border-x-transparent border-b-transparent border-[6px]",
+    bottom: "bottom-full left-1/2 -translate-x-1/2 border-b-[#A7B3A1] border-x-transparent border-t-transparent border-[6px]",
+    left: "left-full top-1/2 -translate-y-1/2 border-l-[#A7B3A1] border-y-transparent border-r-transparent border-[6px]",
+    right: "right-full top-1/2 -translate-y-1/2 border-r-[#A7B3A1] border-y-transparent border-l-transparent border-[6px]",
   };
 
   const variantStyles = {
-    default: "bg-zinc-900 border border-zinc-700/60 text-zinc-100 shadow-xl",
-    subtle: "bg-zinc-800/90 border border-zinc-700/50 text-zinc-200 shadow-lg backdrop-blur-sm",
-    emerald: "bg-emerald-950/90 border border-emerald-500/40 text-emerald-200 shadow-xl shadow-emerald-950/30 backdrop-blur-sm",
+    default: "bg-[#A7B3A1] border border-[#8A9884] text-zinc-950 shadow-xl font-semibold",
+    subtle: "bg-[#A7B3A1]/95 border border-[#8A9884] text-zinc-950 shadow-lg backdrop-blur-sm font-semibold",
+    emerald: "bg-[#A7B3A1] border border-[#8A9884] text-zinc-950 shadow-xl backdrop-blur-sm font-semibold",
   };
 
   return (

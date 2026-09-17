@@ -38,16 +38,12 @@ export function MascotCelebration({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 10 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="relative w-full max-w-md bg-zinc-900 border border-emerald-500/30 rounded-2xl p-6 shadow-2xl shadow-emerald-950/40 text-center overflow-hidden"
+            className="relative w-full max-w-md bg-[#A7B3A1] border border-[#8A9884] rounded-2xl p-6 shadow-2xl text-center overflow-hidden"
           >
-            {/* Ambient Background Glow */}
-            <div className="absolute -top-24 -left-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
-
             {/* Close button */}
             <button
               onClick={onClose}
-              className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-200 p-1 rounded-lg hover:bg-zinc-800 transition-colors"
+              className="absolute top-4 right-4 text-zinc-800 hover:text-zinc-950 p-1 rounded-lg hover:bg-[#96A390] transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -63,19 +59,19 @@ export function MascotCelebration({
             </div>
 
             <div className="mt-4">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-2">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-950/10 border border-zinc-950/20 text-zinc-900 text-xs font-bold uppercase tracking-wider mb-2">
                 <Sparkles className="w-3.5 h-3.5" />
                 Success
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">{title}</h3>
-              <p className="text-sm text-zinc-400 mb-6">{subtitle}</p>
+              <h3 className="text-xl font-bold text-zinc-950 mb-2">{title}</h3>
+              <p className="text-sm text-zinc-800 mb-6 font-medium">{subtitle}</p>
 
               {metrics && metrics.length > 0 && (
-                <div className="grid grid-cols-2 gap-3 mb-6 bg-zinc-950/60 p-3 rounded-xl border border-zinc-800/80">
+                <div className="grid grid-cols-2 gap-3 mb-6 bg-zinc-900/10 p-3 rounded-xl border border-zinc-900/20">
                   {metrics.map((m, idx) => (
                     <div key={idx} className="text-center">
-                      <span className="block text-xs text-zinc-500">{m.label}</span>
-                      <span className="block text-sm font-semibold text-emerald-400">{m.value}</span>
+                      <span className="block text-xs text-zinc-700">{m.label}</span>
+                      <span className="block text-sm font-bold text-zinc-950">{m.value}</span>
                     </div>
                   ))}
                 </div>

@@ -14,6 +14,7 @@ export interface MascotProps {
   animate?: boolean;
   className?: string;
   onClick?: () => void;
+  usePng?: boolean;
 }
 
 const SIZE_MAP = {
@@ -74,15 +75,14 @@ export function Mascot({
         className="relative flex items-center justify-center"
       >
         {!imgError ? (
-          /* Try PNG asset with SVG Fallback */
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
-            src={assetConfig.imagePath}
-            alt={assetConfig.label}
+            src="/mascot/nori.jpg"
+            alt="Nori Mascot"
             width={numericSize}
             height={numericSize}
             onError={() => setImgError(true)}
-            className="object-contain drop-shadow-md transition-all duration-300"
+            className="object-contain rounded-2xl drop-shadow-lg transition-all duration-300"
             style={{ width: numericSize, height: numericSize }}
           />
         ) : (

@@ -218,10 +218,10 @@ export function WorkflowCanvas({
 
       {/* Dismissible Onboarding Banner */}
       {typeof window !== "undefined" && !localStorage.getItem("nori_onboarding_dismissed") && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 bg-zinc-900/90 border border-emerald-500/30 text-zinc-100 text-xs px-4 py-2 rounded-full shadow-lg backdrop-blur-sm">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 bg-[#A7B3A1] border border-[#8A9884] text-zinc-950 text-xs px-4 py-2 rounded-full shadow-lg backdrop-blur-sm">
           <Mascot mood="happy" size="xs" animate={false} />
           <div className="flex items-center gap-2 font-medium">
-            <span className="text-emerald-400 font-semibold">Nori Guide:</span>
+            <span className="text-zinc-950 font-bold">Nori Guide:</span>
             <span>1. Add Trigger → 2. Add AI Node → 3. Connect Edges → 4. Click Test Run</span>
           </div>
           <button
@@ -230,7 +230,7 @@ export function WorkflowCanvas({
               // trigger rerender
               setContextMenu(null);
             }}
-            className="text-zinc-400 hover:text-white p-0.5 ml-1"
+            className="text-zinc-800 hover:text-zinc-950 p-0.5 ml-1"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -239,10 +239,10 @@ export function WorkflowCanvas({
 
       {/* AI Workflow Suggestions Bar (When canvas has nodes) */}
       {nodes.length > 0 && (
-        <div className="absolute bottom-4 left-4 z-20 pointer-events-auto flex items-center gap-3 bg-zinc-900/95 border border-zinc-700/80 rounded-2xl px-4 py-2.5 shadow-xl text-xs text-zinc-200">
+        <div className="absolute bottom-4 left-4 z-20 pointer-events-auto flex items-center gap-3 bg-[#A7B3A1] border border-[#8A9884] rounded-2xl px-4 py-2.5 shadow-xl text-xs text-zinc-950 font-medium">
           <Mascot mood="thinking" size="xs" animate={true} />
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-emerald-400">Nori Copilot:</span>
+            <span className="font-bold text-zinc-950">Nori Copilot:</span>
             <span>
               {nodes[nodes.length - 1]?.data?.definitionId === "ai"
                 ? "Want me to add a Telegram notification step?"
@@ -261,7 +261,7 @@ export function WorkflowCanvas({
               const targetDef = lastNode?.data?.definitionId === "ai" ? "telegram" : "ai";
               addNode(targetDef, { x: posX, y: posY });
             }}
-            className="h-7 text-xs bg-emerald-950/40 hover:bg-emerald-900/60 border-emerald-500/40 text-emerald-300 gap-1 font-semibold"
+            className="h-7 text-xs bg-zinc-950 text-white hover:bg-zinc-800 border-zinc-900 gap-1 font-semibold"
           >
             <Plus className="w-3 h-3" /> Add Step
           </Button>
@@ -271,7 +271,7 @@ export function WorkflowCanvas({
       {/* Smart Empty Canvas Overlay */}
       {nodes.length === 0 && !isDragOver && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-          <div className="pointer-events-auto flex flex-col items-center gap-4 rounded-3xl border border-zinc-800 bg-zinc-950/85 backdrop-blur-md p-8 shadow-2xl text-center max-w-md">
+          <div className="pointer-events-auto flex flex-col items-center gap-4 rounded-3xl border border-[#8A9884] bg-[#A7B3A1] backdrop-blur-md p-8 shadow-2xl text-center max-w-md">
             <Mascot
               mood="default"
               size="lg"
@@ -281,8 +281,8 @@ export function WorkflowCanvas({
             />
 
             <div className="mt-2">
-              <h3 className="text-base font-bold text-zinc-100">Smart Automation Canvas</h3>
-              <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+              <h3 className="text-base font-bold text-zinc-950">Smart Automation Canvas</h3>
+              <p className="text-xs text-zinc-800 mt-1 leading-relaxed font-medium">
                 Choose a starter template or describe your automation goal in plain English.
               </p>
             </div>
@@ -298,13 +298,13 @@ export function WorkflowCanvas({
                 <button
                   key={idx}
                   onClick={() => setAiModalOpen(true)}
-                  className="flex flex-col items-start p-2.5 rounded-xl border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 hover:border-emerald-500/40 text-left transition-all group"
+                  className="flex flex-col items-start p-2.5 rounded-xl border border-zinc-900/20 bg-zinc-900/10 hover:bg-zinc-900/20 text-left transition-all group"
                 >
-                  <span className="text-xs font-semibold text-zinc-200 group-hover:text-emerald-400 flex items-center gap-1">
-                    <Zap className="w-3 h-3 text-emerald-400" />
+                  <span className="text-xs font-bold text-zinc-950 group-hover:text-zinc-900 flex items-center gap-1">
+                    <Zap className="w-3 h-3 text-zinc-900 fill-zinc-900" />
                     {chip.title}
                   </span>
-                  <span className="text-[10px] text-zinc-400 mt-0.5 font-mono truncate w-full">
+                  <span className="text-[10px] text-zinc-800 mt-0.5 font-mono truncate w-full font-medium">
                     {chip.prompt}
                   </span>
                 </button>
@@ -316,7 +316,7 @@ export function WorkflowCanvas({
                 variant="primary"
                 size="sm"
                 onClick={() => setAiModalOpen(true)}
-                className="flex-1 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-950/40"
+                className="flex-1 text-xs gap-1.5 bg-zinc-950 hover:bg-zinc-800 text-white shadow-md font-semibold"
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 Generate with Nori AI
@@ -325,7 +325,7 @@ export function WorkflowCanvas({
                 variant="outline"
                 size="sm"
                 onClick={onShowLibrary}
-                className="flex-1 text-xs gap-1.5 border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                className="flex-1 text-xs gap-1.5 border-zinc-900/30 text-zinc-950 hover:bg-zinc-900/10 font-semibold"
               >
                 <ListPlus className="h-3.5 w-3.5" />
                 Browse Nodes

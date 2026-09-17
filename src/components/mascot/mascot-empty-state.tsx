@@ -31,17 +31,17 @@ export function MascotEmptyState({
 }: MascotEmptyStateProps) {
   return (
     <div
-      className={`flex flex-col items-center justify-center text-center p-8 sm:p-12 rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 backdrop-blur-xs ${className}`}
+      className={`flex flex-col items-center justify-center text-center p-8 sm:p-12 rounded-2xl border border-[#8A9884] bg-[#A7B3A1] shadow-lg ${className}`}
     >
       <div className="mb-4 relative">
         <Mascot mood={mood} size="lg" animate={true} />
       </div>
 
-      <h3 className="text-lg sm:text-xl font-semibold text-zinc-100 mb-2">
+      <h3 className="text-lg sm:text-xl font-bold text-zinc-950 mb-2">
         {title}
       </h3>
 
-      <p className="text-sm text-zinc-400 max-w-md mb-6 leading-relaxed">
+      <p className="text-sm text-zinc-800 font-medium max-w-md mb-6 leading-relaxed">
         {description}
       </p>
 
