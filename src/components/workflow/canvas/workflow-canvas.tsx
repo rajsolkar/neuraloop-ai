@@ -170,6 +170,24 @@ export function WorkflowCanvas({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {/* Mobile Guard Screen (<768px) */}
+      <div className="md:hidden pointer-events-auto absolute inset-0 z-30 flex flex-col items-center justify-center p-6 text-center bg-surface/95 backdrop-blur-md">
+        <div className="p-3.5 rounded-full bg-accent-dim text-accent-ink mb-3">
+          <Sparkles className="w-7 h-7 text-emerald-600" />
+        </div>
+        <h3 className="text-base font-bold text-ink">Desktop Recommended</h3>
+        <p className="text-xs text-ink-soft mt-1 max-w-xs leading-relaxed">
+          The Neuraloop visual workflow canvas is optimized for desktop and tablet displays.
+        </p>
+        <div className="flex gap-2 mt-4">
+          <Button variant="primary" size="sm" className="text-xs" onClick={() => window.location.href = "/workflows"}>
+            Dashboard
+          </Button>
+          <Button variant="outline" size="sm" className="text-xs" onClick={() => window.location.href = "/docs"}>
+            View Docs
+          </Button>
+        </div>
+      </div>
       <ReactFlow
         nodes={nodes}
         edges={edges}

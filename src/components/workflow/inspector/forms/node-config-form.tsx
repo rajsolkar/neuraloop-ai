@@ -425,8 +425,8 @@ function HttpRequestForm({
               value={authType}
               onChange={(val) => onChange({ ...config, authType: val })}
               options={[
-                { value: "vault", label: "🔒 Vault Credential (Recommended)" },
-                { value: "oauth_connection", label: "🌐 OAuth 2.0 Connection (Google, GitHub, Slack)" },
+                { value: "vault", label: "Vault Credential (Recommended)" },
+                { value: "oauth_connection", label: "OAuth 2.0 Connection (Google, GitHub, Slack)" },
                 { value: "bearer", label: "Bearer Token" },
                 { value: "basic", label: "Basic Auth (Username/Password)" },
                 { value: "api_key", label: "API Key (Header / Query)" },
@@ -443,9 +443,9 @@ function HttpRequestForm({
                   value={config.connectionProvider ?? "github"}
                   onChange={(val) => onChange({ ...config, connectionProvider: val })}
                   options={[
-                    { value: "google", label: "🌐 Google Workspace" },
-                    { value: "github", label: "🐙 GitHub" },
-                    { value: "slack", label: "💬 Slack" },
+                    { value: "google", label: "Google Workspace" },
+                    { value: "github", label: "GitHub" },
+                    { value: "slack", label: "Slack" },
                   ]}
                 />
               </FormField>
@@ -650,7 +650,7 @@ function HttpRequestForm({
           disabled={isTesting}
           className="w-full py-1.5 px-3 rounded-md bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
         >
-          {isTesting ? "Executing Test Request..." : "⚡ Test Request"}
+          {isTesting ? "Executing Test Request..." : "Test Request"}
         </button>
 
         {testResult && (
@@ -788,7 +788,7 @@ function AIForm({
               }
               className="text-[10px] font-medium px-2 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-colors"
             >
-              ✨ Generate
+              Generate
             </button>
             <button
               type="button"
@@ -802,7 +802,7 @@ function AIForm({
               }
               className="text-[10px] font-medium px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition-colors"
             >
-              🔧 Improve
+              Improve
             </button>
             <button
               type="button"
@@ -816,7 +816,7 @@ function AIForm({
               }
               className="text-[10px] font-medium px-2 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 transition-colors"
             >
-              🔍 Debug Guard
+              Debug Guard
             </button>
           </div>
         </div>
@@ -1335,7 +1335,7 @@ function CodeForm({
       </FormField>
 
       <div className="rounded-md border border-border/80 bg-canvas p-2.5 text-[11px] text-ink-faint font-mono">
-        💡 Tip: Use <code className="text-accent-ink font-bold">return &#123; result: ... &#125;;</code> to return objects to downstream nodes.
+        Tip: Use <code className="text-accent-ink font-bold">return &#123; result: ... &#125;;</code> to return objects to downstream nodes.
       </div>
     </div>
   );
@@ -1948,7 +1948,7 @@ function TransformForm({
       <div className="rounded-lg border border-border bg-canvas/60 p-3 space-y-2 mt-2">
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-semibold text-accent-ink flex items-center gap-1.5">
-            ✨ Interactive Live Preview
+            Interactive Live Preview
           </span>
           <span className="text-[10px] font-mono text-ink-faint">Real-time Transformation</span>
         </div>

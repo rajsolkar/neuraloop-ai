@@ -197,7 +197,7 @@ export function TestExecutionDialog({ open, onOpenChange }: TestExecutionDialogP
                 {executing
                   ? "Nori is running nodes..."
                   : executionResult?.status === "success"
-                  ? "Execution Successful! 🎉"
+                  ? "Execution Successful"
                   : executionResult?.status === "failed" || errorMsg
                   ? "Execution Needs Attention"
                   : "Ready for Test Execution"}

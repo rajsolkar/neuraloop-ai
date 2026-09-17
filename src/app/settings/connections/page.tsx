@@ -215,7 +215,7 @@ export default function ConnectionsPage() {
                     size="sm"
                     className="w-full text-xs gap-1.5 bg-primary text-white hover:bg-primary/90"
                   >
-                    ⚡ Connect {p.name}
+                    Connect {p.name}
                   </Button>
                 )}
               </div>

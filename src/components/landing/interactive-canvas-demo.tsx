@@ -151,7 +151,7 @@ export function LandingInteractiveCanvasDemo() {
     setActiveStepIndex(0);
     setLogMessages([
       {
-        text: `🚀 Triggering workflow "${currentBlueprint.name}"...`,
+        text: `Triggering workflow "${currentBlueprint.name}"...`,
         time: new Date().toLocaleTimeString(),
         type: "info",
       },
@@ -174,7 +174,7 @@ export function LandingInteractiveCanvasDemo() {
           setLogMessages((prev) => [
             ...prev,
             {
-              text: `✓ "${node.title}" completed in ${(Math.random() * 150 + 20).toFixed(0)}ms`,
+              text: `[Completed] "${node.title}" in ${(Math.random() * 150 + 20).toFixed(0)}ms`,
               time: new Date().toLocaleTimeString(),
               type: "success",
             },
@@ -186,7 +186,7 @@ export function LandingInteractiveCanvasDemo() {
             setLogMessages((prev) => [
               ...prev,
               {
-                text: `🎉 Workflow execution finished successfully!`,
+                text: `Workflow execution finished successfully.`,
                 time: new Date().toLocaleTimeString(),
                 type: "success",
               },

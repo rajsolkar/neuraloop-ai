@@ -38,7 +38,7 @@ export class WorkflowRefiner {
         label: "Failure Alert (Slack)",
         config: {
           channel: "#alerts",
-          message: "⚠️ **Workflow Execution Error Detected!** Details: {{steps.error.message}}",
+          message: "[Execution Error Alert] Details: {{steps.error.message}}",
         },
       };
 
@@ -85,7 +85,7 @@ export class WorkflowRefiner {
           node.label = "Discord Webhook Alert";
           node.config = {
             messageType: "embed",
-            content: "🤖 **Workflow Notification**",
+            content: "**Workflow Notification**",
             embedTitle: "Alert",
             embedDescription: "{{input.message}}",
             embedColor: 3447003,
@@ -189,7 +189,7 @@ export class WorkflowRefiner {
         id: newSlackNodeId,
         definitionId: "slack",
         label: "Slack Alert",
-        config: { channel: "#general", message: "🚀 Workflow Output: {{steps.ai.output.text}}" },
+        config: { channel: "#general", message: "Workflow Output: {{steps.ai.output.text}}" },
       });
 
       if (lastNode) {

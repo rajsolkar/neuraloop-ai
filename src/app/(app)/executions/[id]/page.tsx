@@ -284,7 +284,7 @@ export default function ExecutionDetailPage({ params }: { params: Promise<{ id: 
                     }}
                     className="h-7 text-xs bg-white/90 hover:bg-white text-slate-900 border-black/20 font-bold gap-1 shadow-xs"
                   >
-                    ✨ {fix.label}
+                    {fix.label}
                   </Button>
                 ))}
                 <Button

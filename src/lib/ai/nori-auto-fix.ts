@@ -81,7 +81,7 @@ export class NoriAutoFixEngine {
         label: "Failure Alert (Slack)",
         config: {
           channel: "#alerts",
-          message: "⚠️ **Execution Error Alert**: {{steps.error.message}}",
+          message: "[Execution Error Alert]: {{steps.error.message}}",
         },
       });
 
@@ -109,7 +109,7 @@ export class NoriAutoFixEngine {
         id: notifyId,
         definitionId: "slack",
         label: "Slack Notification",
-        config: { channel: "#general", message: "🚀 Workflow Run Complete: {{steps.ai.output.text}}" },
+        config: { channel: "#general", message: "Workflow Run Complete: {{steps.ai.output.text}}" },
       });
 
       if (lastNode) {

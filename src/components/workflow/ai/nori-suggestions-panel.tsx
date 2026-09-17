@@ -91,7 +91,7 @@ export function NoriSuggestionsPanel({
         <Mascot mood="optimizing" size="xs" animate />
         <span className="font-bold text-sm flex items-center gap-1.5 text-slate-950">
           <Sparkles className="w-4 h-4 text-amber-800" />
-          💡 Nori One-Click Suggestions
+          Nori One-Click Suggestions
         </span>
         <span className="ml-auto text-[11px] font-medium text-slate-800 bg-white/40 px-2 py-0.5 rounded-full border border-white/40">
           1-Click Graph Refinements

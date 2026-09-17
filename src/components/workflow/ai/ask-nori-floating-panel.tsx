@@ -67,7 +67,7 @@ export function AskNoriFloatingPanel({
           onApplyRefinement(data.workflow, data.refinementSummary);
           setMessages((prev) => [
             ...prev,
-            { sender: "nori", text: `✅ ${data.refinementSummary}` },
+            { sender: "nori", text: `${data.refinementSummary}` },
           ]);
           setMood("happy");
           setLoading(false);
@@ -84,7 +84,7 @@ export function AskNoriFloatingPanel({
       onApplyRefinement(localRes.workflow, localRes.refinementSummary);
       setMessages((prev) => [
         ...prev,
-        { sender: "nori", text: `✅ ${localRes.refinementSummary}` },
+        { sender: "nori", text: `${localRes.refinementSummary}` },
       ]);
       setMood("happy");
     } else {

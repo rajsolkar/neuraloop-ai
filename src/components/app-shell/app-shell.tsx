@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { Sidebar, MobileSidebar } from "@/components/app-shell/sidebar";
 import { CreateWorkflowDialog } from "@/components/workspace/create-workflow-dialog";
+import { CommandPalette } from "@/components/app-shell/command-palette";
 import { useUiStore } from "@/store/ui-store";
 import { Button } from "@/components/ui/button";
 
@@ -50,6 +51,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       <MobileSidebar />
       <CreateWorkflowDialog />
+      <CommandPalette />
     </div>
   );
 }

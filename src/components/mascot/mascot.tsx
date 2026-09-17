@@ -82,7 +82,7 @@ export function Mascot({
             width={numericSize}
             height={numericSize}
             onError={() => setImgError(true)}
-            className="object-contain drop-shadow-md transition-all duration-300"
+            className="object-cover rounded-2xl overflow-hidden shadow-xs transition-all duration-300"
             style={{ width: numericSize, height: numericSize }}
           />
         ) : (

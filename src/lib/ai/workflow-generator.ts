@@ -73,9 +73,9 @@ export function getDefaultConfigForDefinition(
     case "email":
       return { to: "alerts@company.com", subject: "Workflow Digest", body: "Here is your workflow summary digest." };
     case "telegram":
-      return { chatId: "@alerts_channel", message: "💡 **Workflow Alert**:\n{{input.message}}", parseMode: "Markdown" };
+      return { chatId: "@alerts_channel", message: "**Workflow Alert**:\n{{input.message}}", parseMode: "Markdown" };
     case "discord":
-      return { messageType: "embed", content: "🤖 **Daily Digest**", embedTitle: "Workflow Summary", embedColor: 3447003 };
+      return { messageType: "embed", content: "**Daily Digest**", embedTitle: "Workflow Summary", embedColor: 3447003 };
     case "google-sheets":
       return { operation: "append_row", range: "Sheet1!A:C", valuesJson: "[[\"{{input.name}}\", \"{{input.email}}\"]]" };
     case "loop":

@@ -19,16 +19,18 @@ function isModifier(event: KeyboardEvent): boolean {
 }
 
 /**
- * Global editor keyboard shortcuts. Deletion is handled here (single history
- * entries that remove node + connected edges together), so React Flow's
- * built-in `deleteKeyCode` is disabled in the canvas.
+ * Global editor keyboard shortcuts.
  */
-export function useEditorShortcuts(onSave?: () => void) {
+export function useEditorShortcuts(
+  onSave?: () => void,
+  onToggleFocus?: () => void,
+  onTogglePresentation?: () => void
+) {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
 
-      // Saving must work even while the name/description inputs are focused.
+      // Saving must work even while inputs are focused.
       if (isModifier(event) && key === "s") {
         event.preventDefault();
         if (onSave) {
@@ -58,6 +60,19 @@ export function useEditorShortcuts(onSave?: () => void) {
 
       if (isTypingTarget(event.target)) return;
 
+      // Single key shortcuts (F for Focus, P for Presentation)
+      if (key === "f" && !isModifier(event) && onToggleFocus) {
+        event.preventDefault();
+        onToggleFocus();
+        return;
+      }
+
+      if (key === "p" && !isModifier(event) && onTogglePresentation) {
+        event.preventDefault();
+        onTogglePresentation();
+        return;
+      }
+
       if ((event.key === "Delete" || event.key === "Backspace") && !isModifier(event)) {
         const editor = useEditorStore.getState();
         if (editor.selectedEdgeId) {
@@ -77,5 +92,5 @@ export function useEditorShortcuts(onSave?: () => void) {
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [onSave]);
+  }, [onSave, onToggleFocus, onTogglePresentation]);
 }

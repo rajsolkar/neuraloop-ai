@@ -17,13 +17,12 @@ export function LandingHero() {
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-3xl text-center">
-          {/* Mascot Companion Badge Header */}
+          {/* Mascot Companion Header */}
           <div className="flex flex-col items-center mb-4">
             <Mascot
               mood="happy"
               size="sm"
-              message="Meet Nori, your AI Workflow Companion! 🚀"
-              bubblePosition="top"
+              animate={false}
               className="mb-2"
             />
           </div>

@@ -15,13 +15,13 @@ interface CredentialListProps {
   onCreateNew: () => void;
 }
 
-const PROVIDER_ICONS: Record<string, { label: string; icon: string }> = {
-  openai: { label: "OpenAI", icon: "🤖" },
-  anthropic: { label: "Anthropic", icon: "🧠" },
-  gemini: { label: "Google Gemini", icon: "✨" },
-  slack: { label: "Slack", icon: "💬" },
-  smtp: { label: "Email / SMTP", icon: "✉️" },
-  custom: { label: "Custom API", icon: "🔑" },
+const PROVIDER_ICONS: Record<string, { label: string }> = {
+  openai: { label: "OpenAI" },
+  anthropic: { label: "Anthropic" },
+  gemini: { label: "Google Gemini" },
+  slack: { label: "Slack" },
+  smtp: { label: "Email / SMTP" },
+  custom: { label: "Custom API" },
 };
 
 function formatLastUsed(isoString: string | null): string {
@@ -104,7 +104,7 @@ export function CredentialList({
 
       <div className="grid gap-3">
         {credentials.map((cred) => {
-          const providerInfo = PROVIDER_ICONS[cred.provider] || { label: cred.provider, icon: "🔑" };
+          const providerInfo = PROVIDER_ICONS[cred.provider] || { label: cred.provider };
           const isTesting = testingId === cred.id;
           const result = testResults[cred.id];
 
@@ -114,8 +114,8 @@ export function CredentialList({
               className="group flex flex-col justify-between rounded-xl border border-border bg-surface p-4 transition-all hover:border-accent/40 sm:flex-row sm:items-center"
             >
               <div className="flex items-start gap-3.5">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-hover text-lg border border-border">
-                  {providerInfo.icon}
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-hover text-ink border border-border">
+                  <KeyRound className="h-4 w-4 text-accent-ink" />
                 </div>
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">

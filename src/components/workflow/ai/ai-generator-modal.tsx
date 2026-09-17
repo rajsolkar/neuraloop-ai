@@ -253,7 +253,7 @@ export function AiGeneratorModal({ open, onOpenChange, targetWorkflowId }: AiGen
                 </div>
                 <div className="flex flex-col text-slate-950 text-xs">
                   <span className="font-bold flex items-center gap-1">
-                    Meet Nori, your AI Architect! 🚀
+                    Meet Nori, your AI Architect!
                   </span>
                   <p className="mt-0.5 leading-relaxed text-slate-900 font-medium">
                     Describe any automation goal. I&apos;ll search official templates, select optimal node specifications, configure OAuth bridges, validate expressions, compute an architecture score, and build a production-ready graph for you!

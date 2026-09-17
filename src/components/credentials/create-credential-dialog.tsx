@@ -17,18 +17,18 @@ interface CreateCredentialDialogProps {
 }
 
 const PROVIDERS = [
-  { value: "openai-api-key", label: "OpenAI API Key", icon: "🤖" },
-  { value: "claude-api-key", label: "Claude API Key", icon: "🧠" },
-  { value: "gemini-api-key", label: "Gemini API Key", icon: "✨" },
-  { value: "openai", label: "OpenAI API (Legacy)", icon: "🤖" },
-  { value: "anthropic", label: "Anthropic Claude (Legacy)", icon: "🧠" },
-  { value: "gemini", label: "Google Gemini (Legacy)", icon: "✨" },
-  { value: "slack", label: "Slack Bot Token", icon: "💬" },
-  { value: "telegram-bot-token", label: "Telegram Bot Token", icon: "✈️" },
-  { value: "discord-webhook", label: "Discord Webhook", icon: "🎮" },
-  { value: "google-sheets", label: "Google Sheets / API Key", icon: "📊" },
-  { value: "smtp", label: "Email / SMTP Server", icon: "✉️" },
-  { value: "custom", label: "Custom API Key / Header", icon: "🔑" },
+  { value: "openai-api-key", label: "OpenAI API Key" },
+  { value: "claude-api-key", label: "Claude API Key" },
+  { value: "gemini-api-key", label: "Gemini API Key" },
+  { value: "openai", label: "OpenAI API (Legacy)" },
+  { value: "anthropic", label: "Anthropic Claude (Legacy)" },
+  { value: "gemini", label: "Google Gemini (Legacy)" },
+  { value: "slack", label: "Slack Bot Token" },
+  { value: "telegram-bot-token", label: "Telegram Bot Token" },
+  { value: "discord-webhook", label: "Discord Webhook" },
+  { value: "google-sheets", label: "Google Sheets / API Key" },
+  { value: "smtp", label: "Email / SMTP Server" },
+  { value: "custom", label: "Custom API Key / Header" },
 ];
 
 export function CreateCredentialDialog({
@@ -219,7 +219,7 @@ export function CreateCredentialDialog({
             >
               {PROVIDERS.map((p) => (
                 <option key={p.value} value={p.value}>
-                  {p.icon} {p.label}
+                  {p.label}
                 </option>
               ))}
             </select>

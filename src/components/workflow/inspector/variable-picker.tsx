@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Variable, Search, Sparkles, ChevronRight, Check, Database, Zap, Layers, RefreshCw } from "lucide-react";
+import { Variable, Search, Sparkles, ChevronRight, Check, Database, Zap, Layers, RefreshCw, X } from "lucide-react";
 import { useEditorStore } from "@/store/editor-store";
 import { getNodeDefinition } from "@/lib/workflow";
 import { Button } from "@/components/ui/button";
@@ -268,7 +268,7 @@ export function VariablePicker({ onSelect, currentNodeId }: VariablePickerProps)
               onClick={() => setIsOpen(false)}
               className="text-ink-faint hover:text-ink text-xs font-bold px-1"
             >
-              ✕
+              <X className="h-3.5 w-3.5" />
             </button>
           </div>
 
