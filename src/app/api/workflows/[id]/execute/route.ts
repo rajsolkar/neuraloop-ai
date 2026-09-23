@@ -69,9 +69,29 @@ export async function POST(
         if (dbVersion) {
           versionId = dbVersion.id;
           versionNumber = dbVersion.version;
+        } else {
+          // Auto-create initial WorkflowVersion (v1) in DB if workflow version record doesn't exist yet
+          const newVersionId = makeId("ver");
+          const canonicalDef = {
+            name: workflow.name,
+            description: workflow.description || "",
+            status: workflow.status,
+            nodes: workflow.nodes || [],
+            edges: workflow.edges || [],
+          };
+          const createdVer = await prisma.workflowVersion.create({
+            data: {
+              id: newVersionId,
+              workflowId,
+              version: 1,
+              definition: canonicalDef as unknown as Prisma.InputJsonValue,
+            },
+          });
+          versionId = createdVer.id;
+          versionNumber = 1;
         }
       } catch (err) {
-        console.warn("Prisma fetch version failed in execute API:", err);
+        console.warn("Prisma fetch/create version failed in execute API:", err);
       }
     }
 
@@ -98,7 +118,11 @@ export async function POST(
           },
         });
       } catch (err) {
-        console.warn("Failed to create WorkflowExecution record in DB:", err);
+        console.error("Failed to create WorkflowExecution record in DB:", err);
+        return NextResponse.json(
+          { error: `EXECUTION_CREATION_FAILED: ${err instanceof Error ? err.message : String(err)}` },
+          { status: 500 },
+        );
       }
     }
 
@@ -110,8 +134,11 @@ export async function POST(
       input,
       metadata,
     });
+    console.log("QUEUE RESULT:", queueResult);
 
     // 3. Return queued response immediately without blocking HTTP connection
+    console.log("EXECUTION CREATED:",executionId);
+
     return NextResponse.json(
       {
         message: "Workflow execution queued successfully",

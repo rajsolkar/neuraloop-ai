@@ -3,6 +3,7 @@ import { getRedisConnection, isRedisConfigured } from "./redis";
 import { WorkflowEngine } from "../execution/engine";
 import { prisma } from "../prisma";
 import type { ExecutionSource } from "@/types/workflow";
+import { makeId } from "@/lib/utils";
 
 export interface ExecutionJobPayload {
   executionId: string;
@@ -102,12 +103,13 @@ export class ExecutionQueue {
   }): Promise<{ id: string; status: string }> {
     const { workflowId, workflowVersionId, userId, input = {}, source = "manual", triggerMetadata } = options;
 
-    let executionId = `exec-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    let executionId = `exec-${makeId("x")}`;
 
     if (process.env.DATABASE_URL) {
       try {
         const record = await prisma.workflowExecution.create({
           data: {
+            id: executionId,
             workflowId,
             workflowVersionId,
             userId: userId ?? null,

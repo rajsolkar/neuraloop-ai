@@ -109,7 +109,42 @@ export class WorkflowEngine {
       if (!canonicalWorkflow) {
         throw new Error(`WORKFLOW_NOT_FOUND: Workflow with ID '${workflowId}' not found.`);
       }
-      versionId = versionId || `ver-fallback-${workflowId}`;
+    }
+
+    if (isDatabaseConfigured() && (!versionId || versionId.startsWith("ver-fallback-"))) {
+      try {
+        const dbVer = await prisma.workflowVersion.findFirst({
+          where: { workflowId: canonicalWorkflow.id },
+          orderBy: { version: "desc" },
+        });
+        if (dbVer) {
+          versionId = dbVer.id;
+          versionNumber = dbVer.version;
+        } else {
+          const createdVer = await prisma.workflowVersion.create({
+            data: {
+              id: makeId("ver"),
+              workflowId: canonicalWorkflow.id,
+              version: 1,
+              definition: {
+                name: canonicalWorkflow.name,
+                description: canonicalWorkflow.description || "",
+                status: canonicalWorkflow.status,
+                nodes: canonicalWorkflow.nodes || [],
+                edges: canonicalWorkflow.edges || [],
+              } as unknown as Prisma.InputJsonValue,
+            },
+          });
+          versionId = createdVer.id;
+          versionNumber = 1;
+        }
+      } catch (err) {
+        console.warn("Failed to resolve or create WorkflowVersion in engine:", err);
+      }
+    }
+
+    if (!versionId) {
+      versionId = `ver-fallback-${canonicalWorkflow.id}`;
     }
 
     const nodes = canonicalWorkflow.nodes || [];
