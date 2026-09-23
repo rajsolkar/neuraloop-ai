@@ -10,8 +10,17 @@ export const TelegramExecutor: NodeExecutor = {
     input: Record<string, unknown>,
     context: ExecutionContext,
   ): Promise<NodeExecutionResult> {
+    console.log("RUNTIME TELEGRAM CONFIG", node.data.config);
     const config = (node.data.config as Record<string, unknown>) ?? {};
-    const chatIdRaw = (config.chatId as string) || (input.chatId as string) || "";
+    const chatIdRaw =
+      (config.chatId as string) ||
+      (config.chat_id as string) ||
+      (config.chatID as string) ||
+      (config.channelId as string) ||
+      (config.target as string) ||
+      (input.chatId as string) ||
+      (input.chat_id as string) ||
+      "";
     const operation = (config.operation as string) || "send_message";
     const textRaw = (config.text as string) || (config.message as string) || (input.text as string) || "Neuraloop Workflow Notification";
     const photoUrlRaw = (config.photoUrl as string) || (input.photoUrl as string) || "";

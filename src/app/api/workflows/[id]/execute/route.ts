@@ -37,6 +37,9 @@ export async function POST(
       );
     }
 
+    const telegramNode = workflow.nodes?.find((n) => n.data?.definitionId === "telegram");
+    console.log("DB TELEGRAM CONFIG", telegramNode?.data?.config);
+
     let body: Record<string, unknown> = {};
     try {
       body = (await request.json()) as Record<string, unknown>;

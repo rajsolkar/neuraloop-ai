@@ -48,8 +48,8 @@ export function TestExecutionDialog({ open, onOpenChange }: TestExecutionDialogP
   const handleRunExecution = async () => {
     if (!workflowId) return;
 
-    // Save workflow to backend first if dirty
-    saveWorkflow();
+    // Save workflow to backend first if dirty and wait for persistence
+    await useEditorStore.getState().saveWorkflowAsync();
 
     setExecuting(true);
     setErrorMsg(null);
@@ -67,6 +67,11 @@ export function TestExecutionDialog({ open, onOpenChange }: TestExecutionDialogP
       setExecuting(false);
       return;
     }
+
+    const currentNodes = useEditorStore.getState().nodes;
+    const telegramNode = currentNodes.find((n) => n.data.definitionId === "telegram");
+    console.log("WORKFLOW BEFORE EXECUTE", { workflowId, nodesCount: currentNodes.length });
+    console.log("TELEGRAM CONFIG BEFORE EXECUTE", telegramNode?.data?.config);
 
     try {
       const res = await fetch(`/api/workflows/${workflowId}/execute`, {
