@@ -275,7 +275,13 @@ export function ExecutionResultTimeline({
 
         {nodeExecutions.length === 0 ? (
           <div className="p-6 text-center text-xs text-ink-faint border border-dashed border-border rounded-xl">
-            Waiting for worker to process workflow steps...
+            {status === "failed"
+              ? "Execution failed before step processing could begin."
+              : status === "success"
+              ? "Execution completed with no steps executed."
+              : status === "cancelled"
+              ? "Execution was cancelled before processing steps."
+              : "Waiting for worker to process workflow steps..."}
           </div>
         ) : (
           <div className="flex flex-col">
