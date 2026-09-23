@@ -17,15 +17,30 @@ export const ConditionOperatorSchema = z.enum([
   "less_than_or_equal",
   "contains",
   "does_not_contain",
+  "starts_with",
+  "ends_with",
+  "between",
   "is_empty",
   "is_not_empty",
+  "is_true",
+  "is_false",
 ]);
 export type ConditionOperator = z.infer<typeof ConditionOperatorSchema>;
+
+export const ConditionDataTypeSchema = z.enum(["string", "number", "boolean", "variable"]);
+export type ConditionDataType = z.infer<typeof ConditionDataTypeSchema>;
+
+export const ConditionModeSchema = z.enum(["basic", "advanced"]);
+export type ConditionMode = z.infer<typeof ConditionModeSchema>;
 
 export const ConditionSchema = z.object({
   field: z.string().default(""),
   operator: ConditionOperatorSchema.default("equals"),
   value: z.string().default(""),
+  secondValue: z.string().default(""),
+  dataType: ConditionDataTypeSchema.default("string"),
+  mode: ConditionModeSchema.default("basic"),
+  expression: z.string().default(""),
 });
 export type Condition = z.infer<typeof ConditionSchema>;
 

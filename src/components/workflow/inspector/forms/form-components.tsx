@@ -4,10 +4,12 @@ import React from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, ShieldAlert } from "lucide-react";
+import { Plus, Trash2, ShieldAlert, Sparkles, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { KeyValuePair, Condition, ConditionOperator } from "@/lib/workflow/config-schemas";
 import { CreateCredentialDialog } from "@/components/credentials/create-credential-dialog";
+import { VariableInput, VariableTextarea } from "../variable-input";
+import { resolveVariables } from "@/lib/variables/resolve-variable";
 
 export function FormField({
   label,
@@ -134,19 +136,6 @@ export function KeyValueEditor({
   );
 }
 
-const CONDITION_OPERATOR_OPTIONS: { value: ConditionOperator; label: string }[] = [
-  { value: "equals", label: "Equals" },
-  { value: "not_equals", label: "Does not equal" },
-  { value: "greater_than", label: "Greater than (>)" },
-  { value: "less_than", label: "Less than (<)" },
-  { value: "greater_than_or_equal", label: "Greater or equal (>=)" },
-  { value: "less_than_or_equal", label: "Less or equal (<=)" },
-  { value: "contains", label: "Contains" },
-  { value: "does_not_contain", label: "Does not contain" },
-  { value: "is_empty", label: "Is empty" },
-  { value: "is_not_empty", label: "Is not empty" },
-];
-
 export function ConditionBuilder({
   condition,
   onChange,
@@ -154,35 +143,305 @@ export function ConditionBuilder({
   condition: Condition;
   onChange: (updated: Condition) => void;
 }) {
+  const mode = condition.mode || "basic";
+  const dataType = condition.dataType || "string";
+  const operator = condition.operator || "equals";
+  const field = condition.field || "";
+  const value = condition.value || "";
+  const secondValue = condition.secondValue || "";
+  const expression = condition.expression || "";
+
+  // Operator Options grouped by Data Type
+  const getOperatorOptions = () => {
+    switch (dataType) {
+      case "number":
+        return [
+          { value: "equals", label: "Equals (=)" },
+          { value: "not_equals", label: "Not Equals (!=)" },
+          { value: "greater_than", label: "Greater Than (>)" },
+          { value: "less_than", label: "Less Than (<)" },
+          { value: "greater_than_or_equal", label: "Greater or Equal (>=)" },
+          { value: "less_than_or_equal", label: "Less or Equal (<=)" },
+          { value: "between", label: "Between (Range)" },
+        ];
+      case "boolean":
+        return [
+          { value: "is_true", label: "Is True" },
+          { value: "is_false", label: "Is False" },
+          { value: "equals", label: "Equals" },
+        ];
+      case "variable":
+        return [
+          { value: "equals", label: "Equals" },
+          { value: "not_equals", label: "Not Equals" },
+          { value: "greater_than", label: "Greater Than (>)" },
+          { value: "less_than", label: "Less Than (<)" },
+          { value: "contains", label: "Contains" },
+        ];
+      default: // string
+        return [
+          { value: "equals", label: "Equals" },
+          { value: "not_equals", label: "Not Equals" },
+          { value: "contains", label: "Contains" },
+          { value: "does_not_contain", label: "Does Not Contain" },
+          { value: "starts_with", label: "Starts With" },
+          { value: "ends_with", label: "Ends With" },
+          { value: "is_empty", label: "Is Empty" },
+          { value: "is_not_empty", label: "Is Not Empty" },
+        ];
+    }
+  };
+
+  // Live Condition Preview & Result Evaluation
+  const previewData = React.useMemo(() => {
+    const sampleContext: Record<string, unknown> = {
+      name: "Raj Solkar",
+      leadScore: 95,
+      status: "active",
+      alert: "heavy rain warning",
+      isQualified: true,
+      country: "India",
+      budget: 10000,
+      minimumBudget: 5000,
+    };
+
+    if (mode === "advanced") {
+      const exprString = expression || '{{leadScore}} > 80 && {{country}} == "India"';
+      const resolved = resolveVariables(exprString, sampleContext);
+      let isTrue = false;
+      try {
+        if (resolved.includes("contains(")) {
+          const m = resolved.match(/contains\(\s*['"]?([^'"]+)['"]?\s*,\s*['"]?([^'"]+)['"]?\s*\)/);
+          if (m) isTrue = m[1].toLowerCase().includes(m[2].toLowerCase());
+        } else if (resolved.includes("&&")) {
+          isTrue = resolved.split("&&").every((part) => {
+            const p = part.trim();
+            if (p.includes(">")) {
+              const [a, b] = p.split(">").map((s) => Number(s.trim()));
+              return a > b;
+            }
+            if (p.includes("==")) {
+              const [a, b] = p.split("==").map((s) => s.trim().replace(/^['"]|['"]$/g, ""));
+              return a === b;
+            }
+            return Boolean(p);
+          });
+        } else if (resolved.includes(">")) {
+          const [a, b] = resolved.split(">").map((s) => Number(s.trim()));
+          isTrue = a > b;
+        } else {
+          isTrue = Boolean(resolved && resolved !== "false" && resolved !== "0");
+        }
+      } catch {
+        isTrue = false;
+      }
+      return {
+        previewText: resolved,
+        result: isTrue,
+      };
+    }
+
+    // Basic Mode Preview
+    const leftResolved = resolveVariables(field || "{{leadScore}}", sampleContext);
+    const rightResolved = resolveVariables(value || "80", sampleContext);
+    const secondResolved = resolveVariables(secondValue || "100", sampleContext);
+
+    let isPass = false;
+    switch (operator) {
+      case "equals":
+        isPass = String(leftResolved).trim() === String(rightResolved).trim();
+        break;
+      case "not_equals":
+        isPass = String(leftResolved).trim() !== String(rightResolved).trim();
+        break;
+      case "greater_than":
+        isPass = Number(leftResolved) > Number(rightResolved);
+        break;
+      case "less_than":
+        isPass = Number(leftResolved) < Number(rightResolved);
+        break;
+      case "greater_than_or_equal":
+        isPass = Number(leftResolved) >= Number(rightResolved);
+        break;
+      case "less_than_or_equal":
+        isPass = Number(leftResolved) <= Number(rightResolved);
+        break;
+      case "contains":
+        isPass = String(leftResolved).toLowerCase().includes(String(rightResolved).toLowerCase());
+        break;
+      case "does_not_contain":
+        isPass = !String(leftResolved).toLowerCase().includes(String(rightResolved).toLowerCase());
+        break;
+      case "starts_with":
+        isPass = String(leftResolved).toLowerCase().startsWith(String(rightResolved).toLowerCase());
+        break;
+      case "ends_with":
+        isPass = String(leftResolved).toLowerCase().endsWith(String(rightResolved).toLowerCase());
+        break;
+      case "between": {
+        const num = Number(leftResolved);
+        const min = Number(rightResolved);
+        const max = Number(secondResolved);
+        isPass = !isNaN(num) && num >= min && num <= max;
+        break;
+      }
+      case "is_empty":
+        isPass = leftResolved === undefined || leftResolved === null || String(leftResolved).trim() === "";
+        break;
+      case "is_not_empty":
+        isPass = leftResolved !== undefined && leftResolved !== null && String(leftResolved).trim() !== "";
+        break;
+      case "is_true":
+        isPass = String(leftResolved).toLowerCase() === "true" || Boolean(leftResolved) === true;
+        break;
+      case "is_false":
+        isPass = String(leftResolved).toLowerCase() === "false" || !leftResolved;
+        break;
+      default:
+        isPass = false;
+    }
+
+    const previewStr = `${field || "{{leadScore}}"} ${operator.replace(/_/g, " ")} ${
+      operator === "between"
+        ? `${value || "50"} and ${secondValue || "100"}`
+        : operator.includes("is_")
+        ? ""
+        : value || "80"
+    }`;
+
+    return {
+      previewText: previewStr.trim(),
+      result: isPass,
+    };
+  }, [mode, dataType, operator, field, value, secondValue, expression]);
+
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border bg-canvas/50 p-3">
-      <FormField label="Field Property">
-        <Input
-          placeholder="e.g. lead.score or status"
-          value={condition.field}
-          onChange={(e) => onChange({ ...condition, field: e.target.value })}
-          className="h-8 text-xs bg-surface"
-        />
-      </FormField>
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-canvas/40 p-3.5 shadow-xs">
+      {/* Mode Switch Header */}
+      <div className="flex items-center justify-between border-b border-border pb-2.5">
+        <div className="flex items-center gap-1.5 text-xs font-bold text-ink">
+          <SlidersHorizontal className="h-3.5 w-3.5 text-accent-ink" />
+          <span>Rule Configuration</span>
+        </div>
+        <div className="flex items-center gap-1 p-0.5 rounded-lg bg-surface border border-border text-[11px] font-semibold">
+          <button
+            type="button"
+            onClick={() => onChange({ ...condition, mode: "basic" })}
+            className={`px-2 py-0.5 rounded transition-colors ${
+              mode === "basic" ? "bg-accent text-accent-ink shadow-xs font-bold" : "text-ink-faint hover:text-ink"
+            }`}
+          >
+            Basic Mode
+          </button>
+          <button
+            type="button"
+            onClick={() => onChange({ ...condition, mode: "advanced" })}
+            className={`px-2 py-0.5 rounded transition-colors ${
+              mode === "advanced" ? "bg-accent text-accent-ink shadow-xs font-bold" : "text-ink-faint hover:text-ink"
+            }`}
+          >
+            Advanced Mode
+          </button>
+        </div>
+      </div>
 
-      <FormField label="Operator">
-        <FormSelect
-          value={condition.operator}
-          onChange={(op) => onChange({ ...condition, operator: op as ConditionOperator })}
-          options={CONDITION_OPERATOR_OPTIONS}
-        />
-      </FormField>
+      {mode === "basic" ? (
+        <>
+          {/* Data Type Selector */}
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold text-ink-faint uppercase tracking-wider">Data Type</span>
+            <div className="grid grid-cols-4 gap-1 p-1 rounded-lg bg-surface border border-border text-xs font-medium text-center">
+              {(["string", "number", "boolean", "variable"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => onChange({ ...condition, dataType: t })}
+                  className={`py-1 rounded capitalize transition-all ${
+                    dataType === t
+                      ? "bg-accent/20 text-accent-ink font-bold border border-accent/30 shadow-2xs"
+                      : "text-ink-soft hover:text-ink hover:bg-canvas"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
 
-      {condition.operator !== "is_empty" && condition.operator !== "is_not_empty" && (
-        <FormField label="Target Value">
-          <Input
-            placeholder="Comparison value"
-            value={condition.value}
-            onChange={(e) => onChange({ ...condition, value: e.target.value })}
-            className="h-8 text-xs bg-surface"
+          {/* Left Operand / Field Property */}
+          <FormField label="Left Expression / Field Property">
+            <VariableInput
+              placeholder="e.g. {{leadScore}} or alert"
+              value={field}
+              onChange={(val) => onChange({ ...condition, field: val })}
+              showPreview={false}
+            />
+          </FormField>
+
+          {/* Operator Select */}
+          <FormField label="Operator">
+            <FormSelect
+              value={operator}
+              onChange={(op) => onChange({ ...condition, operator: op as ConditionOperator })}
+              options={getOperatorOptions()}
+            />
+          </FormField>
+
+          {/* Target Value / Right Operands */}
+          {operator !== "is_empty" && operator !== "is_not_empty" && operator !== "is_true" && operator !== "is_false" && (
+            <FormField label="Target Value">
+              <VariableInput
+                placeholder="Comparison value or {{minimumValue}}"
+                value={value}
+                onChange={(val) => onChange({ ...condition, value: val })}
+                showPreview={false}
+              />
+            </FormField>
+          )}
+
+          {operator === "between" && (
+            <FormField label="Upper Bound Value">
+              <VariableInput
+                placeholder="Upper range value e.g. 100"
+                value={secondValue}
+                onChange={(val) => onChange({ ...condition, secondValue: val })}
+                showPreview={false}
+              />
+            </FormField>
+          )}
+        </>
+      ) : (
+        /* Advanced Mode Expression Input */
+        <FormField label="Advanced Logical Expression">
+          <VariableTextarea
+            placeholder='e.g. {{leadScore}} > 80 && {{country}} == "India"'
+            value={expression}
+            onChange={(val) => onChange({ ...condition, expression: val })}
+            rows={3}
+            showPreview={false}
           />
         </FormField>
       )}
+
+      {/* Visual Condition Preview Card */}
+      <div className="mt-1 rounded-lg border border-border/80 bg-surface p-2.5 flex items-center justify-between text-xs font-mono">
+        <div className="flex items-center gap-1.5 min-w-0 pr-2">
+          <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent-ink" />
+          <div className="truncate">
+            <span className="text-ink-faint text-[10px] block font-sans">Condition Preview</span>
+            <span className="text-ink font-semibold truncate block">{previewData.previewText}</span>
+          </div>
+        </div>
+        <span
+          className={`shrink-0 rounded px-2 py-0.5 text-[11px] font-bold shadow-2xs ${
+            previewData.result
+              ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+              : "bg-rose-500/15 text-rose-400 border border-rose-500/30"
+          }`}
+        >
+          Result: {previewData.result ? "TRUE" : "FALSE"}
+        </span>
+      </div>
     </div>
   );
 }

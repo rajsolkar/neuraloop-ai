@@ -5,6 +5,8 @@ import { FormField, FormSelect, KeyValueEditor, ConditionBuilder, CredentialSele
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { VariablePicker } from "../variable-picker";
+import { VariableInput, VariableTextarea } from "../variable-input";
+import { resolveVariables } from "@/lib/variables/resolve-variable";
 import type {
   HttpRequestConfig,
   OpenAiConfig,
@@ -347,17 +349,11 @@ function HttpRequestForm({
             </div>
             <div className="flex-1">
               <FormField label="URL" description="Endpoint target URL">
-                <div className="relative flex items-center">
-                  <Input
-                    placeholder="https://api.example.com/v1/resource"
-                    value={url}
-                    onChange={(e) => onChange({ ...config, url: e.target.value })}
-                    className="text-xs pr-8"
-                  />
-                  <div className="absolute right-1.5">
-                    <VariablePicker onSelect={(path) => onChange({ ...config, url: `${url}{{${path}}}` })} />
-                  </div>
-                </div>
+                <VariableInput
+                  placeholder="https://api.example.com/v1/resource"
+                  value={url}
+                  onChange={(val) => onChange({ ...config, url: val })}
+                />
               </FormField>
             </div>
           </div>
@@ -385,7 +381,7 @@ function HttpRequestForm({
                   className="font-mono text-xs h-28"
                 />
                 <div className="absolute right-2 top-2">
-                  <VariablePicker onSelect={(path) => onChange({ ...config, body: `${body}{{${path}}}` })} />
+                  <VariablePicker align="right" onSelect={(path) => onChange({ ...config, body: `${body}{{${path}}}` })} />
                 </div>
               </div>
             </FormField>
@@ -409,7 +405,7 @@ function HttpRequestForm({
                   className="font-mono text-xs h-24"
                 />
                 <div className="absolute right-2 top-2">
-                  <VariablePicker onSelect={(path) => onChange({ ...config, rawBody: `${rawBody}{{${path}}}` })} />
+                  <VariablePicker align="right" onSelect={(path) => onChange({ ...config, rawBody: `${rawBody}{{${path}}}` })} />
                 </div>
               </div>
             </FormField>
@@ -486,7 +482,7 @@ function HttpRequestForm({
                   className="text-xs pr-8"
                 />
                 <div className="absolute right-1.5">
-                  <VariablePicker onSelect={(path) => onChange({ ...config, bearerToken: `{{${path}}}` })} />
+                  <VariablePicker align="right" onSelect={(path) => onChange({ ...config, bearerToken: `{{${path}}}` })} />
                 </div>
               </div>
             </FormField>
@@ -761,17 +757,14 @@ function AIForm({
         />
       </FormField>
 
-      <div className="space-y-1">
-        <FormField label="System Prompt (Optional)">
-          <Textarea
-            placeholder="System behavior guidelines..."
-            value={systemPrompt}
-            onChange={(e) => onChange({ ...config, systemPrompt: e.target.value })}
-            className="text-xs h-16"
-          />
-        </FormField>
-        <VariablePicker onSelect={(expr) => onChange({ ...config, systemPrompt: systemPrompt ? `${systemPrompt} ${expr}` : expr })} />
-      </div>
+      <FormField label="System Prompt (Optional)">
+        <VariableTextarea
+          placeholder="System behavior guidelines with {{variables}}..."
+          value={systemPrompt}
+          onChange={(val) => onChange({ ...config, systemPrompt: val })}
+          rows={2}
+        />
+      </FormField>
 
       <div className="space-y-1">
         <div className="flex items-center justify-between mb-1">
@@ -821,14 +814,13 @@ function AIForm({
           </div>
         </div>
         <FormField label="">
-          <Textarea
+          <VariableTextarea
             placeholder="User prompt instructions with {{variables}}..."
             value={prompt}
-            onChange={(e) => onChange({ ...config, prompt: e.target.value })}
-            className="text-xs h-24"
+            onChange={(val) => onChange({ ...config, prompt: val })}
+            rows={3}
           />
         </FormField>
-        <VariablePicker onSelect={(expr) => onChange({ ...config, prompt: prompt ? `${prompt} ${expr}` : expr })} />
       </div>
 
       <FormField label={`Temperature (${temperature})`}>
@@ -972,47 +964,43 @@ function EmailForm({
       />
 
       <FormField label="To (Recipient Email)">
-        <Input
-          placeholder="user@example.com"
+        <VariableInput
+          placeholder="user@example.com or {{email}}"
           value={to}
-          onChange={(e) => onChange({ ...config, to: e.target.value })}
-          className="text-xs"
+          onChange={(val) => onChange({ ...config, to: val })}
         />
       </FormField>
 
       <FormField label="CC (Optional)">
-        <Input
-          placeholder="cc@example.com"
+        <VariableInput
+          placeholder="cc@example.com or {{cc}}"
           value={cc}
-          onChange={(e) => onChange({ ...config, cc: e.target.value })}
-          className="text-xs"
+          onChange={(val) => onChange({ ...config, cc: val })}
         />
       </FormField>
 
       <FormField label="BCC (Optional)">
-        <Input
+        <VariableInput
           placeholder="bcc@example.com"
           value={bcc}
-          onChange={(e) => onChange({ ...config, bcc: e.target.value })}
-          className="text-xs"
+          onChange={(val) => onChange({ ...config, bcc: val })}
         />
       </FormField>
 
       <FormField label="Subject">
-        <Input
-          placeholder="Email subject title"
+        <VariableInput
+          placeholder="Email subject title e.g. Lead: {{company}}"
           value={subject}
-          onChange={(e) => onChange({ ...config, subject: e.target.value })}
-          className="text-xs"
+          onChange={(val) => onChange({ ...config, subject: val })}
         />
       </FormField>
 
       <FormField label="Email Body">
-        <Textarea
-          placeholder="Email body text or HTML..."
+        <VariableTextarea
+          placeholder="Email body text or HTML with {{variables}}..."
           value={body}
-          onChange={(e) => onChange({ ...config, body: e.target.value })}
-          className="text-xs h-24"
+          onChange={(val) => onChange({ ...config, body: val })}
+          rows={3}
         />
       </FormField>
     </div>
@@ -1550,35 +1538,29 @@ function TelegramForm({
         />
       </FormField>
 
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-ink">Chat ID / Channel Handle</span>
-        <VariablePicker onSelect={(expr) => onChange({ ...config, chatId: config.chatId ? `${config.chatId} ${expr}` : expr })} />
-      </div>
-      <Input
-        placeholder="e.g. @mychannel or 123456789"
-        value={chatId}
-        onChange={(e) => onChange({ ...config, chatId: e.target.value })}
-        className="font-mono text-xs"
-      />
+      <FormField label="Chat ID / Channel Handle">
+        <VariableInput
+          placeholder="e.g. @mychannel or 123456789"
+          value={chatId}
+          onChange={(val) => onChange({ ...config, chatId: val })}
+        />
+      </FormField>
 
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-ink">Message Text (Markdown)</span>
-        <VariablePicker onSelect={(expr) => onChange({ ...config, text: config.text ? `${config.text} ${expr}` : expr })} />
-      </div>
-      <Textarea
-        placeholder="Type message text or use variables..."
-        value={text}
-        onChange={(e) => onChange({ ...config, text: e.target.value })}
-        className="text-xs h-20"
-      />
+      <FormField label="Message Text (Markdown)">
+        <VariableTextarea
+          placeholder="Type message text or use variables..."
+          value={text}
+          onChange={(val) => onChange({ ...config, text: val })}
+          rows={3}
+        />
+      </FormField>
 
       {operation === "send_photo" && (
         <FormField label="Photo Image URL">
-          <Input
+          <VariableInput
             placeholder="https://example.com/image.jpg"
             value={photoUrl}
-            onChange={(e) => onChange({ ...config, photoUrl: e.target.value })}
-            className="text-xs"
+            onChange={(val) => onChange({ ...config, photoUrl: val })}
           />
         </FormField>
       )}
@@ -1630,16 +1612,14 @@ function DiscordForm({
         />
       </FormField>
 
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-ink">Message Content</span>
-        <VariablePicker onSelect={(expr) => onChange({ ...config, content: config.content ? `${config.content} ${expr}` : expr })} />
-      </div>
-      <Textarea
-        placeholder="Type Discord message..."
-        value={content}
-        onChange={(e) => onChange({ ...config, content: e.target.value })}
-        className="text-xs h-20"
-      />
+      <FormField label="Message Content">
+        <VariableTextarea
+          placeholder="Type Discord message with {{variables}}..."
+          value={content}
+          onChange={(val) => onChange({ ...config, content: val })}
+          rows={3}
+        />
+      </FormField>
     </div>
   );
 }
@@ -1671,20 +1651,18 @@ function GoogleSheetsForm({
       />
 
       <FormField label="Spreadsheet ID">
-        <Input
+        <VariableInput
           placeholder="e.g. 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
           value={spreadsheetId}
-          onChange={(e) => onChange({ ...config, spreadsheetId: e.target.value })}
-          className="font-mono text-xs"
+          onChange={(val) => onChange({ ...config, spreadsheetId: val })}
         />
       </FormField>
 
       <FormField label="Sheet Name">
-        <Input
+        <VariableInput
           placeholder="Sheet1"
           value={sheetName}
-          onChange={(e) => onChange({ ...config, sheetName: e.target.value })}
-          className="text-xs"
+          onChange={(val) => onChange({ ...config, sheetName: val })}
         />
       </FormField>
 
@@ -1701,28 +1679,22 @@ function GoogleSheetsForm({
 
       {operation === "read_rows" && (
         <FormField label="Range">
-          <Input
+          <VariableInput
             placeholder="A1:Z100"
             value={range}
-            onChange={(e) => onChange({ ...config, range: e.target.value })}
-            className="font-mono text-xs"
+            onChange={(val) => onChange({ ...config, range: val })}
           />
         </FormField>
       )}
 
       {operation === "append_row" && (
-        <div className="space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-ink">Row Values (JSON Array or CSV)</span>
-            <VariablePicker onSelect={(expr) => onChange({ ...config, rowValues: config.rowValues ? `${config.rowValues} ${expr}` : expr })} />
-          </div>
-          <Input
-            placeholder='["Val1", "Val2", "Val3"]'
+        <FormField label="Row Values (JSON Array or CSV)">
+          <VariableInput
+            placeholder='["{{name}}", "{{email}}", "{{company}}"]'
             value={rowValues}
-            onChange={(e) => onChange({ ...config, rowValues: e.target.value })}
-            className="font-mono text-xs"
+            onChange={(val) => onChange({ ...config, rowValues: val })}
           />
-        </div>
+        </FormField>
       )}
     </div>
   );
@@ -1754,8 +1726,9 @@ function TransformForm({
     switch (operation) {
       case "add_field": {
         const k = (config.key as string) || "fieldName";
-        const v = (config.value as string) || "sampleValue";
-        return { ...sampleInput, [k]: v };
+        const rawV = (config.value as string) || "sampleValue";
+        const resolvedV = resolveVariables(rawV, sampleInput);
+        return { ...sampleInput, [k]: resolvedV };
       }
       case "remove_field": {
         const p = (config.targetPath as string) || "status";
@@ -1856,17 +1829,13 @@ function TransformForm({
               className="text-xs"
             />
           </FormField>
-          <div className="space-y-1">
-            <FormField label="Field Value / Expression">
-              <Input
-                value={(config.value as string) || ""}
-                onChange={(e) => onChange({ ...config, value: e.target.value })}
-                placeholder="e.g. {{steps.ai.output.text}}"
-                className="text-xs"
-              />
-            </FormField>
-            <VariablePicker onSelect={(expr) => onChange({ ...config, value: ((config.value as string) || "") + expr })} />
-          </div>
+          <FormField label="Field Value / Expression">
+            <VariableInput
+              value={(config.value as string) || ""}
+              onChange={(val) => onChange({ ...config, value: val })}
+              placeholder="e.g. {{name}} from {{company}} with budget {{budget}}"
+            />
+          </FormField>
         </>
       )}
 
