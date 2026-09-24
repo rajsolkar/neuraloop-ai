@@ -1,6 +1,6 @@
 import type { WorkflowNode } from "@/types/workflow";
 import type { ExecutionContext, NodeExecutionResult, NodeExecutor } from "../types";
-import { resolveExpression } from "../expression";
+import { buildExecutionExpressionContext, resolveExpression } from "../expression";
 import { CredentialService } from "@/lib/security/credential-service";
 
 export const EmailExecutor: NodeExecutor = {
@@ -11,6 +11,8 @@ export const EmailExecutor: NodeExecutor = {
     context: ExecutionContext,
   ): Promise<NodeExecutionResult> {
     const config = (node.data.config as Record<string, unknown>) ?? {};
+    const contextData = buildExecutionExpressionContext(context, input);
+
     let smtpHost = process.env.SMTP_HOST;
     let smtpUser = process.env.SMTP_USER;
 
@@ -31,11 +33,11 @@ export const EmailExecutor: NodeExecutor = {
 
     const toRaw = (config.to as string) || "";
     const subjectRaw = (config.subject as string) || "";
-    const bodyRaw = (config.body as string) || "";
+    const bodyRaw = (config.body as string) || "{{message}}";
 
-    const to = resolveExpression(toRaw, { ...input, ...context.nodeOutputs });
-    const subject = resolveExpression(subjectRaw, { ...input, ...context.nodeOutputs });
-    const body = resolveExpression(bodyRaw, { ...input, ...context.nodeOutputs });
+    const to = resolveExpression(toRaw, contextData);
+    const subject = resolveExpression(subjectRaw, contextData);
+    const body = resolveExpression(bodyRaw, contextData);
 
     if (!to || !to.trim()) {
       return {

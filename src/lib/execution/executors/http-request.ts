@@ -1,7 +1,7 @@
 import type { WorkflowNode } from "@/types/workflow";
 import type { ExecutionContext, NodeExecutionResult, NodeExecutor } from "../types";
 import { validateUrlForSsrf } from "../ssrf";
-import { resolveExpression } from "../expression";
+import { buildExecutionExpressionContext, resolveExpression } from "../expression";
 import { CredentialService } from "@/lib/security/credential-service";
 import { TokenRefreshService } from "@/lib/oauth/token-refresh-service";
 
@@ -25,22 +25,6 @@ export const HttpRequestExecutor: NodeExecutor = {
     const retryCount = Math.min(Math.max(Number(config.retryCount) || 0, 0), 5);
     const retryDelayMs = Math.min(Math.max(Number(config.retryDelay) || 1000, 100), 10000);
 
-    // 1. Build steps map for context expression resolution
-    const stepsMap: Record<string, unknown> = {};
-    for (const [nodeId, outputVal] of Object.entries(context.nodeOutputs ?? {})) {
-      if (typeof outputVal === "object" && outputVal !== null) {
-        stepsMap[nodeId] = {
-          ...(outputVal as Record<string, unknown>),
-          output: outputVal,
-        };
-      } else {
-        stepsMap[nodeId] = {
-          value: outputVal,
-          output: outputVal,
-        };
-      }
-    }
-
     let credentialData: Record<string, string> | null = null;
     const credentialId = (config.credentialId as string) || "";
     if (credentialId) {
@@ -54,13 +38,10 @@ export const HttpRequestExecutor: NodeExecutor = {
       }
     }
 
+    const baseContext = buildExecutionExpressionContext(context, input);
     const contextData: Record<string, unknown> = {
-      input: context.input,
-      steps: stepsMap,
-      trigger: context.input,
+      ...baseContext,
       credential: credentialData || {},
-      ...stepsMap,
-      ...input,
     };
 
     // 2. Resolve target URL

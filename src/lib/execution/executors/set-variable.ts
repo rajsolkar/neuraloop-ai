@@ -1,6 +1,6 @@
 import type { WorkflowNode } from "@/types/workflow";
 import type { ExecutionContext, NodeExecutionResult, NodeExecutor } from "../types";
-import { resolveExpression } from "../expression";
+import { buildExecutionExpressionContext, resolveExpression } from "../expression";
 
 export const SetVariableExecutor: NodeExecutor = {
   definitionId: "set-variable",
@@ -12,13 +12,7 @@ export const SetVariableExecutor: NodeExecutor = {
     try {
       const config = (node.data.config as Record<string, unknown>) ?? {};
       const variablesList = (config.variables as Array<{ key: string; value: string }>) ?? [];
-
-      const contextData = {
-        input: context.input,
-        steps: context.nodeOutputs,
-        metadata: context.metadata,
-        ...input,
-      };
+      const contextData = buildExecutionExpressionContext(context, input);
 
       const variables: Record<string, unknown> = {};
 

@@ -1,6 +1,6 @@
 import type { WorkflowNode } from "@/types/workflow";
 import type { ExecutionContext, NodeExecutionResult, NodeExecutor } from "../types";
-import { resolveExpression } from "../expression";
+import { buildExecutionExpressionContext, resolveExpression } from "../expression";
 import { CredentialService } from "@/lib/security/credential-service";
 
 export const TelegramExecutor: NodeExecutor = {
@@ -12,6 +12,8 @@ export const TelegramExecutor: NodeExecutor = {
   ): Promise<NodeExecutionResult> {
     console.log("RUNTIME TELEGRAM CONFIG", node.data.config);
     const config = (node.data.config as Record<string, unknown>) ?? {};
+    const contextData = buildExecutionExpressionContext(context, input);
+
     const chatIdRaw =
       (config.chatId as string) ||
       (config.chat_id as string) ||
@@ -22,12 +24,19 @@ export const TelegramExecutor: NodeExecutor = {
       (input.chat_id as string) ||
       "";
     const operation = (config.operation as string) || "send_message";
-    const textRaw = (config.text as string) || (config.message as string) || (input.text as string) || "Neuraloop Workflow Notification";
+    const textRaw =
+      (config.text as string) ||
+      (config.message as string) ||
+      (input.text as string) ||
+      "{{message}}";
     const photoUrlRaw = (config.photoUrl as string) || (input.photoUrl as string) || "";
 
-    const chatId = resolveExpression(chatIdRaw, { ...input, ...context.nodeOutputs });
-    const text = resolveExpression(textRaw, { ...input, ...context.nodeOutputs });
-    const photoUrl = resolveExpression(photoUrlRaw, { ...input, ...context.nodeOutputs });
+    const chatId = resolveExpression(chatIdRaw, contextData);
+    let text = resolveExpression(textRaw, contextData);
+    if (!text || !text.trim()) {
+      text = "Neuraloop Workflow Notification";
+    }
+    const photoUrl = resolveExpression(photoUrlRaw, contextData);
 
     if (!chatId) {
       return {

@@ -201,6 +201,11 @@ export class WorkflowEngine {
     const startTime = Date.now();
     const startedAtIso = new Date(startTime).toISOString();
 
+    const nodeTypesMap: Record<string, string> = {};
+    for (const n of nodes) {
+      nodeTypesMap[n.id] = n.data.definitionId;
+    }
+
     const context: ExecutionContext = {
       executionId,
       workflowId: canonicalWorkflow.id,
@@ -211,7 +216,7 @@ export class WorkflowEngine {
       nodeOutputs: {},
       nodeInputs: {},
       nodeStatuses: {},
-      metadata,
+      metadata: { ...metadata, nodeTypes: nodeTypesMap },
     };
 
     // Database record initialization (Reuse existing execution record or create)

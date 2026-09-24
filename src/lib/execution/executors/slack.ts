@@ -1,6 +1,6 @@
 import type { WorkflowNode } from "@/types/workflow";
 import type { ExecutionContext, NodeExecutionResult, NodeExecutor } from "../types";
-import { resolveExpression } from "../expression";
+import { buildExecutionExpressionContext, resolveExpression } from "../expression";
 import { CredentialService } from "@/lib/security/credential-service";
 
 export const SlackExecutor: NodeExecutor = {
@@ -11,6 +11,8 @@ export const SlackExecutor: NodeExecutor = {
     context: ExecutionContext,
   ): Promise<NodeExecutionResult> {
     const config = (node.data.config as Record<string, unknown>) ?? {};
+    const contextData = buildExecutionExpressionContext(context, input);
+
     let slackToken = process.env.SLACK_BOT_TOKEN;
 
     if (config.credentialId) {
@@ -28,9 +30,12 @@ export const SlackExecutor: NodeExecutor = {
     }
 
     const channelRaw = (config.channel as string) || "#general";
-    const messageRaw = (config.message as string) || (config.text as string) || "";
-    const channel = resolveExpression(channelRaw, { ...input, ...context.nodeOutputs });
-    const message = resolveExpression(messageRaw, { ...input, ...context.nodeOutputs });
+    const messageRaw = (config.message as string) || (config.text as string) || "{{message}}";
+    const channel = resolveExpression(channelRaw, contextData);
+    let message = resolveExpression(messageRaw, contextData);
+    if (!message || !message.trim()) {
+      message = "Neuraloop Workflow Notification";
+    }
 
     try {
       const res = await fetch("https://slack.com/api/chat.postMessage", {
