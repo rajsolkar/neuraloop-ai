@@ -385,6 +385,31 @@ export class WorkflowService {
               createdAt: now,
             },
           };
+        } else {
+          const latestVerRecord = await prisma.workflowVersion.findFirst({
+            where: { workflowId: id },
+            orderBy: { version: "desc" },
+          });
+
+          if (latestVerRecord) {
+            await prisma.workflowVersion.update({
+              where: { id: latestVerRecord.id },
+              data: {
+                definition: canonicalDefinition as unknown as Prisma.InputJsonValue,
+              },
+            });
+          } else {
+            const newVersionId = makeId("ver");
+            updateData.currentVersionId = newVersionId;
+            updateData.versions = {
+              create: {
+                id: newVersionId,
+                version: 1,
+                definition: canonicalDefinition as unknown as Prisma.InputJsonValue,
+                createdAt: now,
+              },
+            };
+          }
         }
 
         const updated = await prisma.workflow.update({
