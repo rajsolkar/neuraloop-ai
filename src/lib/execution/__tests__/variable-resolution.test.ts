@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import nodemailer from "nodemailer";
 import { buildExecutionExpressionContext, resolveExpression } from "../expression";
 import { WorkflowEngine } from "../engine";
 import { WorkflowService } from "@/lib/workflow/workflow-service";
@@ -138,7 +139,18 @@ describe("Variable Resolution & Data Propagation Engine", () => {
 
     it("certifies Webhook -> Code -> Email data passing", async () => {
       const origSmtp = process.env.SMTP_HOST;
+      const origUser = process.env.SMTP_USER;
       process.env.SMTP_HOST = "smtp.mailtrap.io";
+      process.env.SMTP_USER = "system@example.com";
+
+      const createTransportSpy = vi.spyOn(nodemailer, "createTransport").mockReturnValue({
+        sendMail: vi.fn().mockResolvedValue({
+          accepted: ["sales@example.com"],
+          rejected: [],
+          response: "250 2.0.0 OK",
+          messageId: "<test-msg-id@example.com>",
+        }),
+      } as any);
 
       try {
         const webhookNode = createWorkflowNode("webhook", { x: 0, y: 0 });
@@ -178,8 +190,11 @@ describe("Variable Resolution & Data Propagation Engine", () => {
         expect(emailExec?.output?.to).toBe("sales@example.com");
         expect(emailExec?.output?.subject).toBe("Pipeline Alert: Raj");
       } finally {
+        createTransportSpy.mockRestore();
         if (origSmtp) process.env.SMTP_HOST = origSmtp;
         else delete process.env.SMTP_HOST;
+        if (origUser) process.env.SMTP_USER = origUser;
+        else delete process.env.SMTP_USER;
       }
     });
   });
