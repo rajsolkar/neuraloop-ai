@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import nodemailer from "nodemailer";
+import type { Transporter } from "nodemailer";
 import { buildExecutionExpressionContext, resolveExpression } from "../expression";
 import { WorkflowEngine } from "../engine";
 import { WorkflowService } from "@/lib/workflow/workflow-service";
@@ -143,14 +144,18 @@ describe("Variable Resolution & Data Propagation Engine", () => {
       process.env.SMTP_HOST = "smtp.mailtrap.io";
       process.env.SMTP_USER = "system@example.com";
 
-      const createTransportSpy = vi.spyOn(nodemailer, "createTransport").mockReturnValue({
+      const transporterMock: Partial<Transporter> = {
         sendMail: vi.fn().mockResolvedValue({
           accepted: ["sales@example.com"],
           rejected: [],
           response: "250 2.0.0 OK",
           messageId: "<test-msg-id@example.com>",
         }),
-      } as any);
+      };
+
+      const createTransportSpy = vi.spyOn(nodemailer, "createTransport").mockReturnValue(
+        transporterMock as Transporter,
+      );
 
       try {
         const webhookNode = createWorkflowNode("webhook", { x: 0, y: 0 });

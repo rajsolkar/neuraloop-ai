@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import nodemailer from "nodemailer";
+import type { Transporter } from "nodemailer";
 import { EmailExecutor } from "../executors/email";
 import { createWorkflowNode } from "@/lib/workflow/create-node";
 import type { ExecutionContext } from "../types";
@@ -76,9 +77,12 @@ describe("EmailExecutor Real SMTP Integration & Delivery Test Suite", () => {
       messageId: "<test-msg-id-12345@smtp.mailtrap.io>",
     });
 
-    const mockCreateTransport = vi.spyOn(nodemailer, "createTransport").mockReturnValue({
+    const transporterMock: Partial<Transporter> = {
       sendMail: mockSendMail,
-    } as unknown as nodemailer.Transporter);
+    };
+    const mockCreateTransport = vi.spyOn(nodemailer, "createTransport").mockReturnValue(
+      transporterMock as Transporter,
+    );
 
     const node = createWorkflowNode("email", { x: 0, y: 0 });
     node.data.config = {
@@ -137,9 +141,12 @@ describe("EmailExecutor Real SMTP Integration & Delivery Test Suite", () => {
       messageId: "<msg-step-var-99@smtp.mailtrap.io>",
     });
 
-    vi.spyOn(nodemailer, "createTransport").mockReturnValue({
+    const transporterMock: Partial<Transporter> = {
       sendMail: mockSendMail,
-    } as unknown as nodemailer.Transporter);
+    };
+    vi.spyOn(nodemailer, "createTransport").mockReturnValue(
+      transporterMock as Transporter,
+    );
 
     const node = createWorkflowNode("email", { x: 0, y: 0 });
     node.data.config = {
@@ -169,9 +176,12 @@ describe("EmailExecutor Real SMTP Integration & Delivery Test Suite", () => {
       messageId: "<rejected-msg-id@smtp.mailtrap.io>",
     });
 
-    vi.spyOn(nodemailer, "createTransport").mockReturnValue({
+    const transporterMock: Partial<Transporter> = {
       sendMail: mockSendMail,
-    } as unknown as nodemailer.Transporter);
+    };
+    vi.spyOn(nodemailer, "createTransport").mockReturnValue(
+      transporterMock as Transporter,
+    );
 
     const node = createWorkflowNode("email", { x: 0, y: 0 });
     node.data.config = {
@@ -189,9 +199,12 @@ describe("EmailExecutor Real SMTP Integration & Delivery Test Suite", () => {
   it("fails execution with SMTP_ERROR when sendMail throws connection or auth error", async () => {
     const mockSendMail = vi.fn().mockRejectedValue(new Error("Invalid login: 535 5.7.8 Authentication credentials invalid"));
 
-    vi.spyOn(nodemailer, "createTransport").mockReturnValue({
+    const transporterMock: Partial<Transporter> = {
       sendMail: mockSendMail,
-    } as unknown as nodemailer.Transporter);
+    };
+    vi.spyOn(nodemailer, "createTransport").mockReturnValue(
+      transporterMock as Transporter,
+    );
 
     const node = createWorkflowNode("email", { x: 0, y: 0 });
     node.data.config = {
@@ -211,9 +224,12 @@ describe("EmailExecutor Real SMTP Integration & Delivery Test Suite", () => {
 
     const mockSendMail = vi.fn().mockImplementation(() => new Promise(() => {})); // Hangs forever
 
-    vi.spyOn(nodemailer, "createTransport").mockReturnValue({
+    const transporterMock: Partial<Transporter> = {
       sendMail: mockSendMail,
-    } as unknown as nodemailer.Transporter);
+    };
+    vi.spyOn(nodemailer, "createTransport").mockReturnValue(
+      transporterMock as Transporter,
+    );
 
     const node = createWorkflowNode("email", { x: 0, y: 0 });
     node.data.config = {
