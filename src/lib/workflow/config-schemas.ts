@@ -99,6 +99,10 @@ export const AIConfigSchema = z.object({
   temperature: z.number().min(0).max(2).default(0.7),
   maxTokens: z.number().int().min(1).max(128000).default(1000),
   systemPrompt: z.string().optional().default(""),
+  mode: z.enum(["standard", "planner"]).optional().default("standard"),
+  responseType: z.enum(["text", "json"]).optional().default("text"),
+  jsonSchema: z.string().optional().default(""),
+  memoryScope: z.enum(["disabled", "workflow"]).optional().default("disabled"),
 });
 export type AIConfig = z.infer<typeof AIConfigSchema>;
 

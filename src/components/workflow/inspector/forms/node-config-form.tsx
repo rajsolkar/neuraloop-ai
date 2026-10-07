@@ -688,7 +688,7 @@ function AIForm({
     (provider === "claude"
       ? "claude-3-5-sonnet-20241022"
       : provider === "gemini"
-      ? "gemini-2.5-flash"
+      ? "gemini-3.8-flash"
       : "gpt-4o-mini");
   const prompt = (config.prompt as string) ?? "";
   const systemPrompt = (config.systemPrompt as string) ?? "";
@@ -703,13 +703,23 @@ function AIForm({
           { value: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku" },
           { value: "claude-3-opus-20240229", label: "Claude 3 Opus" },
         ];
-      case "gemini":
-        return [
-          { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
-          { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-          { value: "gemini-1.5-pro", label: "Gemini 1.5 Pro" },
-          { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
+      case "gemini": {
+        const activeOptions = [
+          { value: "gemini-3.8-flash", label: "Gemini 3.8 Flash (Recommended)" },
+          { value: "gemini-3.7-flash", label: "Gemini 3.7 Flash" },
+          { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
+          { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
+          { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite" },
+          { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro" },
         ];
+        if (model && !activeOptions.some((opt) => opt.value === model)) {
+          activeOptions.push({
+            value: model,
+            label: `${model} (Legacy / Restricted)`,
+          });
+        }
+        return activeOptions;
+      }
       case "openai":
       default:
         return [
@@ -730,7 +740,7 @@ function AIForm({
               val === "claude"
                 ? "claude-3-5-sonnet-20241022"
                 : val === "gemini"
-                ? "gemini-2.5-flash"
+                ? "gemini-3.8-flash"
                 : "gpt-4o-mini";
             onChange({ ...config, provider: val, model: defaultM });
           }}

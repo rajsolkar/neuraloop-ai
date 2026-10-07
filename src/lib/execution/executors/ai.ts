@@ -1,6 +1,6 @@
 import type { WorkflowNode } from "@/types/workflow";
 import type { ExecutionContext, NodeExecutionResult, NodeExecutor } from "../types";
-import { resolveExpression } from "../expression";
+import { buildExecutionExpressionContext, resolveExpression } from "../expression";
 import { CredentialService } from "@/lib/security/credential-service";
 import { WorkflowMemoryService } from "@/lib/ai/workflow-memory";
 
@@ -12,82 +12,94 @@ export const AIExecutor: NodeExecutor = {
     context: ExecutionContext,
   ): Promise<NodeExecutionResult> {
     const config = (node.data.config as Record<string, unknown>) ?? {};
+    const providerName = ((config.provider as string) || "openai").toLowerCase().trim();
+
+    let cleanProvider = "openai";
+    if (providerName.includes("claude") || providerName.includes("anthropic")) {
+      cleanProvider = "claude";
+    } else if (providerName.includes("gemini")) {
+      cleanProvider = "gemini";
+    }
+
     const rawCredentialId = (config.credentialId as string) || (config.credential_id as string) || "";
     const credentialId = rawCredentialId.trim();
 
-    // CRITICAL SECURITY MANDATE: Fail if missing credential. NO FALLBACK TO OPENAI_API_KEY.
-    if (!credentialId) {
+    let secret = "";
+
+    if (credentialId) {
+      try {
+        const cred = await CredentialService.getDecryptedCredential(
+          credentialId,
+          context.userId || undefined,
+        );
+        if (cred && cred.secret) {
+          secret = cred.secret.trim();
+        } else {
+          return {
+            status: "failed",
+            error: "Selected AI credential could not be found or decrypted.",
+          };
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          status: "failed",
+          error: `Credential retrieval failed: ${msg}`,
+        };
+      }
+    }
+
+    // Environment variable fallback if credentialId is omitted
+    if (!secret) {
+      if (cleanProvider === "claude") {
+        secret = (process.env.ANTHROPIC_API_KEY || "").trim();
+      } else if (cleanProvider === "gemini") {
+        secret = (process.env.GEMINI_API_KEY || "").trim();
+      } else {
+        secret = (process.env.OPENAI_API_KEY || "").trim();
+      }
+    }
+
+    if (!secret) {
       return {
         status: "failed",
         error: "AI credential is required.",
       };
     }
 
-    // Step 1: Load & decrypt secret key from Credential Vault
-    let secret = "";
-    let providerName = (config.provider as string) || "openai";
-    try {
-      const cred = await CredentialService.getDecryptedCredential(
-        credentialId,
-        context.userId || undefined,
-      );
-      if (!cred || !cred.secret) {
-        return {
-          status: "failed",
-          error: "Selected AI credential could not be found or decrypted.",
-        };
-      }
-      secret = cred.secret.trim();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return {
-        status: "failed",
-        error: `Credential retrieval failed: ${msg}`,
-      };
-    }
-
-    if (!secret) {
-      return {
-        status: "failed",
-        error: "AI credential secret is empty.",
-      };
-    }
-
-    // Step 2: Prepare inputs & expressions
-    const contextData = {
-      input: context.input,
-      steps: context.nodeOutputs,
-      trigger: context.input,
-      ...input,
-    };
+    // Step 2: Build expression context and resolve prompts
+    const contextData = buildExecutionExpressionContext(context, input);
 
     const mode = (config.mode as string) || "standard"; // "standard" | "planner"
     const responseType = (config.responseType as string) || "text"; // "text" | "json"
-    const jsonSchema = (config.jsonSchema as string) || "";
     const memoryScope = (config.memoryScope as string) || "disabled"; // "disabled" | "workflow"
 
-    let rawPrompt = (config.prompt as string) || "Hello";
-    
-    // Modify prompt if in Planner Mode
+    let rawPrompt = (config.prompt as string) || "";
     if (mode === "planner") {
       rawPrompt = `Decompose the following prompt into a structured execution step breakdown with 'steps' array of clear actions:\n${rawPrompt}`;
     }
 
     const prompt = resolveExpression(rawPrompt, contextData);
+
+    if (!prompt || !prompt.trim()) {
+      return {
+        status: "failed",
+        error: "NODE_CONFIG_INVALID: AI prompt is required.",
+      };
+    }
+
     let rawSystemPrompt = (config.systemPrompt as string) || "";
     if (responseType === "json" || mode === "planner") {
       rawSystemPrompt += "\nYou MUST return valid JSON format.";
     }
     const systemPrompt = rawSystemPrompt ? resolveExpression(rawSystemPrompt, contextData) : "";
 
-    const model = (config.model as string) || "gpt-4o-mini";
+    const model = (config.model as string) || (cleanProvider === "claude" ? "claude-3-5-sonnet-20241022" : cleanProvider === "gemini" ? "gemini-3.8-flash" : "gpt-4o-mini");
     const temperature = typeof config.temperature === "number" ? config.temperature : 0.7;
     const maxTokens = typeof config.maxTokens === "number" ? config.maxTokens : 1000;
 
-    let cleanProvider = providerName.toLowerCase().trim();
-    if (cleanProvider.includes("claude") || cleanProvider.includes("anthropic")) cleanProvider = "claude";
-    else if (cleanProvider.includes("gemini")) cleanProvider = "gemini";
-    else cleanProvider = "openai";
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout limit
 
     try {
       let textOutput = "";
@@ -110,11 +122,20 @@ export const AIExecutor: NodeExecutor = {
               ...(systemPrompt ? { system: systemPrompt } : {}),
               messages: [{ role: "user", content: prompt }],
             }),
+            signal: controller.signal,
           });
 
+          clearTimeout(timeoutId);
           const data = await res.json();
           if (!res.ok) {
-            throw new Error(`Claude API error (HTTP ${res.status}): ${data.error?.message || JSON.stringify(data)}`);
+            const errDetail = data.error?.message || `HTTP ${res.status}`;
+            if (res.status === 401 || res.status === 403) {
+              return { status: "failed", error: "AI_AUTH_ERROR: Invalid Anthropic API key or unauthorized." };
+            }
+            if (res.status === 429) {
+              return { status: "failed", error: "AI_RATE_LIMIT: Anthropic rate limit exceeded or quota exhausted." };
+            }
+            return { status: "failed", error: `AI_REQUEST_FAILED: Anthropic API error (HTTP ${res.status}): ${errDetail}` };
           }
 
           textOutput = data.content?.[0]?.text || "";
@@ -124,7 +145,8 @@ export const AIExecutor: NodeExecutor = {
         }
 
         case "gemini": {
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(secret)}`;
+          const cleanModel = model.replace(/^models\//, "").trim();
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${encodeURIComponent(secret)}`;
           const res = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -136,11 +158,20 @@ export const AIExecutor: NodeExecutor = {
                 maxOutputTokens: maxTokens,
               },
             }),
+            signal: controller.signal,
           });
 
+          clearTimeout(timeoutId);
           const data = await res.json();
           if (!res.ok) {
-            throw new Error(`Gemini API error (HTTP ${res.status}): ${data.error?.message || JSON.stringify(data)}`);
+            const errDetail = data.error?.message || `HTTP ${res.status}`;
+            if (res.status === 401 || res.status === 403) {
+              return { status: "failed", error: "AI_AUTH_ERROR: Invalid Gemini API key or unauthorized." };
+            }
+            if (res.status === 429) {
+              return { status: "failed", error: "AI_RATE_LIMIT: Gemini rate limit exceeded or quota exhausted." };
+            }
+            return { status: "failed", error: `AI_REQUEST_FAILED: Gemini API error (HTTP ${res.status}): ${errDetail}` };
           }
 
           textOutput = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
@@ -166,24 +197,40 @@ export const AIExecutor: NodeExecutor = {
               temperature,
               max_tokens: maxTokens,
             }),
+            signal: controller.signal,
           });
 
+          clearTimeout(timeoutId);
           const data = await res.json();
           if (!res.ok) {
-            throw new Error(`OpenAI API error (HTTP ${res.status}): ${data.error?.message || JSON.stringify(data)}`);
+            const errDetail = data.error?.message || `HTTP ${res.status}`;
+            if (res.status === 401 || res.status === 403) {
+              return { status: "failed", error: "AI_AUTH_ERROR: Invalid OpenAI API key or unauthorized." };
+            }
+            if (res.status === 429) {
+              return { status: "failed", error: "AI_RATE_LIMIT: OpenAI rate limit exceeded or quota exhausted." };
+            }
+            return { status: "failed", error: `AI_REQUEST_FAILED: OpenAI API error (HTTP ${res.status}): ${errDetail}` };
           }
 
-          textOutput = data.choices?.[0]?.message?.content || "";
+          if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+            return { status: "failed", error: "AI_MALFORMED_RESPONSE: OpenAI API response missing choices array." };
+          }
+
+          textOutput = data.choices[0]?.message?.content || "";
           inputTokens = data.usage?.prompt_tokens;
           outputTokens = data.usage?.completion_tokens;
           break;
         }
       }
 
+      if (typeof textOutput !== "string") {
+        return { status: "failed", error: "AI_MALFORMED_RESPONSE: AI output text is missing or invalid." };
+      }
+
       const tokensIn = inputTokens || Math.ceil((prompt.length + (systemPrompt?.length || 0)) / 4);
       const tokensOut = outputTokens || Math.ceil(textOutput.length / 4);
 
-      // Calculate estimated cost
       let costPer1MIn = 0.50;
       let costPer1MOut = 1.50;
       if (model.includes("gpt-4o-mini")) {
@@ -204,11 +251,9 @@ export const AIExecutor: NodeExecutor = {
         ((tokensIn / 1000000) * costPer1MIn + (tokensOut / 1000000) * costPer1MOut).toFixed(6),
       );
 
-      // Parse output if JSON or Planner mode
       let parsedOutput: Record<string, unknown> | null = null;
       if (responseType === "json" || mode === "planner") {
         try {
-          // Clean potential markdown ```json blocks
           const cleanedText = textOutput.replace(/```json\n?|\n?```/g, "").trim();
           parsedOutput = JSON.parse(cleanedText);
         } catch {
@@ -230,7 +275,6 @@ export const AIExecutor: NodeExecutor = {
         },
       };
 
-      // Persist to WorkflowMemory if workflow memory scope is enabled
       if (memoryScope === "workflow" && context.workflowId) {
         await WorkflowMemoryService.setMemory(context.workflowId, `node_output_${node.id}`, finalOutputData);
       }
@@ -247,10 +291,17 @@ export const AIExecutor: NodeExecutor = {
         },
       };
     } catch (err: unknown) {
+      clearTimeout(timeoutId);
+      if (err instanceof Error && err.name === "AbortError") {
+        return {
+          status: "failed",
+          error: "AI_TIMEOUT: AI request timed out after 15s.",
+        };
+      }
       const msg = err instanceof Error ? err.message : String(err);
       return {
         status: "failed",
-        error: msg,
+        error: `AI_NETWORK_ERROR: ${msg}`,
       };
     }
   },
