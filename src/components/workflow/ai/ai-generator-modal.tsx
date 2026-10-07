@@ -92,6 +92,9 @@ export function AiGeneratorModal({ open, onOpenChange, targetWorkflowId }: AiGen
   const [optimizationData, setOptimizationData] = useState<WorkflowOptimizationResult | null>(null);
   const [scoreData, setScoreData] = useState<ArchitectureScoreResult | null>(null);
   const [generationMode, setGenerationMode] = useState<string>("offline-generator");
+  const [isFallback, setIsFallback] = useState<boolean>(false);
+  const [fallbackReason, setFallbackReason] = useState<string | null>(null);
+  const [fallbackMessage, setFallbackMessage] = useState<string | null>(null);
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -126,6 +129,9 @@ export function AiGeneratorModal({ open, onOpenChange, targetWorkflowId }: AiGen
       setOptimizationData(data.optimizations || null);
       setScoreData(data.architectureScore || null);
       setGenerationMode(data.mode || "offline-generator");
+      setIsFallback(Boolean(data.fallback));
+      setFallbackReason(data.fallbackReason || null);
+      setFallbackMessage(data.fallbackMessage || null);
 
       setStep("preview");
       toast("AI Architect designed your workflow graph!");
@@ -386,11 +392,35 @@ export function AiGeneratorModal({ open, onOpenChange, targetWorkflowId }: AiGen
                       Architecture Score: {scoreData.score}/100
                     </Badge>
                   )}
-                  <Badge variant="outline" className="text-[10px] capitalize font-mono bg-white/60 text-slate-900 border-black/20">
-                    {generationMode}
+                  <Badge variant="outline" className="text-[10px] font-semibold bg-white/70 text-slate-900 border-black/20 px-2.5 py-1">
+                    {generationMode === "gemini-3.8-flash"
+                      ? "Gemini 3.8 Flash"
+                      : generationMode === "offline-generator"
+                        ? "Offline Generator"
+                        : generationMode === "template-adapted"
+                          ? "Template Adapted"
+                          : generationMode === "template-starting-point"
+                            ? "Template Starting Point"
+                            : generationMode === "openai"
+                              ? "OpenAI Fallback"
+                              : generationMode.replace(/-/g, " ")}
                   </Badge>
                 </div>
               </div>
+
+              {isFallback && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-950 flex items-start gap-2.5 shadow-2xs">
+                  <AlertCircle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-semibold text-amber-950">
+                      {fallbackMessage || "Gemini is temporarily unavailable, so Nori used its deterministic fallback."}
+                    </span>
+                    <span className="text-[11px] text-amber-800">
+                      Your workflow graph was successfully designed using Neuraloop&apos;s constraint-aware deterministic fallback architect.
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Tab Navigation */}
               <div className="flex items-center gap-1 border-b border-border pb-1">

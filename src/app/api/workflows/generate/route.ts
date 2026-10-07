@@ -67,6 +67,9 @@ export async function POST(request: Request) {
         architectureScore: result.architectureScore,
         generationId: result.generationId,
         mode: result.mode,
+        fallback: result.fallback,
+        fallbackReason: result.fallbackReason,
+        fallbackMessage: result.fallbackMessage,
       },
       { status: 200 },
     );

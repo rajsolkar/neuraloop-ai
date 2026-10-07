@@ -238,6 +238,28 @@ export function generateOfflineWorkflow(
   };
 }
 
+export type GeminiFallbackReason =
+  | "gemini_unavailable"
+  | "gemini_not_configured"
+  | "gemini_auth_error"
+  | "gemini_invalid_response";
+
+export function getFallbackMessage(reason: GeminiFallbackReason | null | undefined): string | null {
+  if (!reason) return null;
+  switch (reason) {
+    case "gemini_unavailable":
+      return "Gemini is temporarily unavailable, so Nori used its deterministic fallback.";
+    case "gemini_not_configured":
+      return "Gemini API key is not configured, so Nori used its deterministic fallback.";
+    case "gemini_auth_error":
+      return "Gemini authentication failed, so Nori used its deterministic fallback.";
+    case "gemini_invalid_response":
+      return "Gemini generated an invalid response, so Nori used its deterministic fallback.";
+    default:
+      return "Gemini is temporarily unavailable, so Nori used its deterministic fallback.";
+  }
+}
+
 /**
  * Gemini 3.8 Flash LLM Direct Generator & Repair Engine
  */
@@ -245,9 +267,11 @@ async function callGemini38Flash(
   promptText: string,
   plan: WorkflowPlanData,
   repairContext?: { errors: string[]; previousGraph: GeneratedWorkflowData },
-): Promise<GeneratedWorkflowData | null> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey.trim() === "") return null;
+): Promise<{ data: GeneratedWorkflowData | null; reason?: GeminiFallbackReason }> {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.OPENAI_API_KEY;
+  if (!apiKey || apiKey.trim() === "") {
+    return { data: null, reason: "gemini_not_configured" };
+  }
 
   const systemPrompt = `You are Neuraloop's Nori AI Workflow Architect. Convert natural language user prompts into a structured JSON workflow graph.
 
@@ -294,6 +318,7 @@ Please fix all validation errors and return a corrected JSON workflow.`;
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(6000),
       body: JSON.stringify({
         contents: [{ parts: [{ text: `${systemPrompt}\n\n${userContent}` }] }],
         generationConfig: {
@@ -304,20 +329,29 @@ Please fix all validation errors and return a corrected JSON workflow.`;
     });
 
     if (!res.ok) {
-      return null;
+      if (res.status === 400 || res.status === 401 || res.status === 403) {
+        return { data: null, reason: "gemini_auth_error" };
+      }
+      return { data: null, reason: "gemini_unavailable" };
     }
 
     const resData = await res.json();
     const textStr = resData.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!textStr) return null;
-
-    const parsed = JSON.parse(textStr);
-    if (parsed && typeof parsed === "object") {
-      parsed.name = generateConciseWorkflowName(promptText, plan, (parsed as Record<string, unknown>).name as string);
+    if (!textStr) {
+      return { data: null, reason: "gemini_invalid_response" };
     }
-    return GeneratedWorkflowSchema.parse(parsed);
-  } catch {
-    return null;
+
+    try {
+      const parsed = JSON.parse(textStr);
+      if (parsed && typeof parsed === "object") {
+        parsed.name = generateConciseWorkflowName(promptText, plan, (parsed as Record<string, unknown>).name as string);
+      }
+      return { data: GeneratedWorkflowSchema.parse(parsed) };
+    } catch {
+      return { data: null, reason: "gemini_invalid_response" };
+    }
+  } catch (err: unknown) {
+    return { data: null, reason: "gemini_unavailable" };
   }
 }
 
@@ -341,6 +375,9 @@ export class WorkflowGenerationService {
     architectureScore: ArchitectureScoreResult;
     generationId: string;
     mode: "template-adapted" | "template-starting-point" | "gemini-3.8-flash" | "openai" | "offline-generator";
+    fallback: boolean;
+    fallbackReason: GeminiFallbackReason | null;
+    fallbackMessage: string | null;
   }> {
     const { prompt, clientId = "unknown", userId, userContext } = options;
 
@@ -360,6 +397,8 @@ export class WorkflowGenerationService {
     const templateMatch = TemplateMatcher.matchAndAdapt(prompt);
     let mode: "template-adapted" | "template-starting-point" | "gemini-3.8-flash" | "openai" | "offline-generator" = "offline-generator";
     let rawGeneratedData: GeneratedWorkflowData | null = null;
+    let fallback = false;
+    let fallbackReason: GeminiFallbackReason | null = null;
 
     // Check if template match satisfies required & forbidden nodes
     if (templateMatch.matched && templateMatch.adaptedWorkflow) {
@@ -373,12 +412,20 @@ export class WorkflowGenerationService {
       }
     }
 
+    const hasApiKey = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.OPENAI_API_KEY);
+
     // 3. Gemini 3.8 Flash Reasoning Engine Generation
-    if (!rawGeneratedData && process.env.GEMINI_API_KEY) {
-      const geminiData = await callGemini38Flash(prompt, plan);
-      if (geminiData) {
-        rawGeneratedData = geminiData;
-        mode = "gemini-3.8-flash";
+    if (!rawGeneratedData) {
+      if (hasApiKey) {
+        const geminiResult = await callGemini38Flash(prompt, plan);
+        if (geminiResult.data) {
+          rawGeneratedData = geminiResult.data;
+          mode = "gemini-3.8-flash";
+        } else {
+          fallbackReason = geminiResult.reason || "gemini_unavailable";
+        }
+      } else {
+        fallbackReason = "gemini_not_configured";
       }
     }
 
@@ -437,6 +484,10 @@ Output JSON Schema:
     if (!rawGeneratedData) {
       rawGeneratedData = generateOfflineWorkflow(prompt, plan);
       mode = "offline-generator";
+      fallback = true;
+      if (!fallbackReason) {
+        fallbackReason = hasApiKey ? "gemini_unavailable" : "gemini_not_configured";
+      }
     }
 
     // 6. Pre-Creation Validation & Automated Repair Loop (Max 2 Attempts)
@@ -445,13 +496,13 @@ Output JSON Schema:
 
     while (!validation.isValid && repairAttempts < 2) {
       repairAttempts++;
-      if (process.env.GEMINI_API_KEY) {
-        const repairedData = await callGemini38Flash(prompt, plan, {
+      if (hasApiKey && mode === "gemini-3.8-flash") {
+        const repairedResult = await callGemini38Flash(prompt, plan, {
           errors: validation.errors,
           previousGraph: rawGeneratedData,
         });
-        if (repairedData) {
-          rawGeneratedData = repairedData;
+        if (repairedResult.data) {
+          rawGeneratedData = repairedResult.data;
           validation = WorkflowValidator.validateGraph(rawGeneratedData, plan);
         } else {
           break;
@@ -466,6 +517,10 @@ Output JSON Schema:
       rawGeneratedData = generateOfflineWorkflow(prompt, plan);
       validation = WorkflowValidator.validateGraph(rawGeneratedData, plan);
       mode = "offline-generator";
+      fallback = true;
+      if (!fallbackReason) {
+        fallbackReason = "gemini_invalid_response";
+      }
     }
 
     // 7. Schema Validation & Canvas Transformation
@@ -511,6 +566,9 @@ Output JSON Schema:
       edges: canonicalEdges,
     });
 
+    // 7.5 Reconcile Architect Plan with Actual Final Graph
+    const reconciledPlan = WorkflowPlanner.reconcilePlanWithGraph(plan, validatedData, userContext);
+
     // 8. Non-Destructive Auto-Optimization Engine
     const { optimizations } = WorkflowOptimizer.optimizeGraph(validatedData);
 
@@ -521,7 +579,7 @@ Output JSON Schema:
     const { nodes: layoutNodes, edges: layoutEdges } = applyAutoLayout(cleanNodes, cleanEdges);
 
     // 11. Natural Language Explanation Generator
-    const explanation = WorkflowExplainer.explainWorkflow(validatedData, plan);
+    const explanation = WorkflowExplainer.explainWorkflow(validatedData, reconciledPlan);
 
     // 12. Template Learning Analytics Tracking
     const generationId = `gen-${makeId("g")}`;
@@ -542,13 +600,16 @@ Output JSON Schema:
         nodes: layoutNodes,
         edges: layoutEdges,
       },
-      plan,
+      plan: reconciledPlan,
       explanation,
       validation,
       optimizations,
       architectureScore,
       generationId,
       mode,
+      fallback,
+      fallbackReason,
+      fallbackMessage: getFallbackMessage(fallbackReason),
     };
   }
 
