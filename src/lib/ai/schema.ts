@@ -29,6 +29,15 @@ export const ALL_NODE_DEFINITION_IDS = [
   "transform",
 ] as const;
 
+export const StructuredIntentSchema = z.object({
+  trigger: z.enum(["manual-trigger", "webhook", "schedule"]),
+  requiredNodes: z.array(z.enum(ALL_NODE_DEFINITION_IDS)),
+  forbiddenNodes: z.array(z.enum(ALL_NODE_DEFINITION_IDS)),
+  actions: z.array(z.string()),
+  integrations: z.array(z.string()),
+  parameters: z.record(z.unknown()).default({}),
+});
+
 export const GeneratedNodeSchema = z.object({
   id: z.string().min(1),
   definitionId: z.enum(ALL_NODE_DEFINITION_IDS),
@@ -54,6 +63,8 @@ export const GeneratedWorkflowSchema = z.object({
 export const WorkflowPlanSchema = z.object({
   goal: z.string(),
   triggerType: z.string(),
+  requiredNodes: z.array(z.string()).default([]),
+  forbiddenNodes: z.array(z.string()).default([]),
   actions: z.array(z.string()),
   integrations: z.array(z.string()),
   credentialsNeeded: z.array(z.string()),
@@ -89,6 +100,8 @@ export const WorkflowValidationResultSchema = z.object({
   isValid: z.boolean(),
   errors: z.array(z.string()),
   warnings: z.array(z.string()),
+  missingRequiredNodes: z.array(z.string()).optional(),
+  forbiddenNodesFound: z.array(z.string()).optional(),
 });
 
 export const WorkflowOptimizationResultSchema = z.object({
@@ -97,8 +110,10 @@ export const WorkflowOptimizationResultSchema = z.object({
   optimizedNodesCount: z.number(),
 });
 
+export type StructuredIntentData = z.infer<typeof StructuredIntentSchema>;
 export type GeneratedWorkflowData = z.infer<typeof GeneratedWorkflowSchema>;
 export type WorkflowPlanData = z.infer<typeof WorkflowPlanSchema>;
 export type WorkflowExplanationData = z.infer<typeof WorkflowExplanationSchema>;
 export type WorkflowValidationResultData = z.infer<typeof WorkflowValidationResultSchema>;
 export type WorkflowOptimizationResultData = z.infer<typeof WorkflowOptimizationResultSchema>;
+

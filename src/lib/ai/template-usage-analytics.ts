@@ -12,7 +12,7 @@ export interface LogGenerationParams {
   prompt: string;
   templateId?: string;
   templateName?: string;
-  mode: "template-adapted" | "template-starting-point" | "openai" | "offline-generator";
+  mode: "template-adapted" | "template-starting-point" | "gemini-3.8-flash" | "openai" | "offline-generator";
   architectureScore: number;
   status: "success" | "failed";
   error?: string;

@@ -1,7 +1,7 @@
 /**
  * Neuraloop Phase 20 — AI Workflow Architect Service v2
- * Orchestrates multi-stage workflow planning, template adaptation, knowledge base node matching,
- * pre-creation graph validation, structural auto-optimization, architecture scoring, and learning analytics.
+ * Gemini 3.8 Flash powered intent-aware workflow planning, structured graph generation,
+ * multi-stage deterministic validation, automated repair loops (max 2 attempts), and explanation generation.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -25,6 +25,7 @@ import { WorkflowExplainer } from "./workflow-explainer";
 import { ArchitectureScorer, type ArchitectureScoreResult } from "./architecture-scorer";
 import { TemplateUsageAnalytics } from "./template-usage-analytics";
 import { WorkflowRefiner, type RefinementResult } from "./workflow-refiner";
+import { NODE_KNOWLEDGE_SPECS } from "./workflow-knowledge-base";
 
 // Simple in-memory rate limiter (20 requests per hour per IP)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -67,7 +68,7 @@ export function getDefaultConfigForDefinition(
       };
     case "ai":
     case "openai":
-      return { provider: "openai", model: "gpt-4o-mini", prompt: "Summarize payload data" };
+      return { provider: "gemini", model: "gemini-3.8-flash", prompt: "Summarize payload data" };
     case "slack":
       return { channel: "#general", message: "New automated notification from Neuraloop workflow" };
     case "email":
@@ -77,7 +78,7 @@ export function getDefaultConfigForDefinition(
     case "discord":
       return { messageType: "embed", content: "**Daily Digest**", embedTitle: "Workflow Summary", embedColor: 3447003 };
     case "google-sheets":
-      return { operation: "append_row", range: "Sheet1!A:C", valuesJson: "[[\"{{input.name}}\", \"{{input.email}}\"]]" };
+      return { operation: "append_row", range: "Sheet1!A:C", valuesJson: '[["{{input.name}}", "{{input.email}}"]]' };
     case "loop":
       return { arrayPath: "result" };
     case "switch":
@@ -89,9 +90,9 @@ export function getDefaultConfigForDefinition(
     case "set-variable":
       return { variables: [{ name: "status", value: "PROCESSED" }] };
     case "delay":
-      return { duration: 1, unit: "hours" };
+      return { duration: 30, unit: "minutes" };
     case "if":
-      return { fieldPath: "score", operator: "greater_than", value: "80" };
+      return { fieldPath: "score", operator: "greater_than", value: "50" };
     case "filter":
       return { fieldPath: "email", operator: "is_not_empty" };
     case "webhook-response":
@@ -103,125 +104,124 @@ export function getDefaultConfigForDefinition(
   }
 }
 
-export function generateOfflineWorkflow(prompt: string): GeneratedWorkflowData {
+const NODE_CATEGORY_ORDER: Record<string, number> = {
+  "http-request": 1,
+  "google-sheets": 1,
+  "code": 2,
+  "transform": 2,
+  "filter": 2,
+  "set-variable": 2,
+  "if": 3,
+  "switch": 3,
+  "loop": 3,
+  "delay": 3,
+  "merge": 3,
+  "ai": 4,
+  "slack": 5,
+  "telegram": 5,
+  "discord": 5,
+  "email": 5,
+  "webhook-response": 6,
+};
+
+export function generateOfflineWorkflow(
+  prompt: string,
+  plan?: WorkflowPlanData,
+): GeneratedWorkflowData {
+  const effectivePlan = plan || WorkflowPlanner.createPlan(prompt);
   const p = prompt.toLowerCase();
+  const reqNodes = effectivePlan.requiredNodes || [];
 
-  // Pattern 1: IF Branching (Webhook -> IF -> Email / Slack)
-  if (p.includes("check if") || (p.includes("webhook") && p.includes("if"))) {
-    return {
-      name: "Conditional Lead Ingestion Workflow",
-      description: "Ingests webhook data, evaluates condition, and routes to email or slack",
-      nodes: [
-        { id: "node-1", definitionId: "webhook", label: "Webhook Trigger", config: getDefaultConfigForDefinition("webhook", p) },
-        { id: "node-2", definitionId: "if", label: "Check Score", config: getDefaultConfigForDefinition("if", p) },
-        { id: "node-3", definitionId: "email", label: "Send Email", config: getDefaultConfigForDefinition("email", p) },
-        { id: "node-4", definitionId: "slack", label: "Send Slack Alert", config: getDefaultConfigForDefinition("slack", p) },
-      ],
-      edges: [
-        { id: "e1", source: "node-1", target: "node-2", sourceHandle: "out", targetHandle: "in" },
-        { id: "e2", source: "node-2", target: "node-3", sourceHandle: "true", targetHandle: "in" },
-        { id: "e3", source: "node-2", target: "node-4", sourceHandle: "false", targetHandle: "in" },
-      ],
-    };
-  }
+  if (reqNodes.length > 0) {
+    const trigger = reqNodes.find((n) => ["schedule", "webhook", "manual-trigger"].includes(n)) || "manual-trigger";
+    const nonTriggers = reqNodes.filter((n) => n !== trigger);
+    const forbidden = new Set(effectivePlan.forbiddenNodes || []);
 
-  // Pattern 2: Delay Onboarding Sequence (Manual/Webhook -> Delay -> Email)
-  if (p.includes("delay") || p.includes("wait ")) {
-    return {
-      name: "Customer Onboarding Sequence",
-      description: "Wait delay step before welcome email",
-      nodes: [
-        { id: "node-1", definitionId: "manual-trigger", label: "Manual Trigger", config: {} },
-        { id: "node-2", definitionId: "delay", label: "Delay Wait", config: getDefaultConfigForDefinition("delay", p) },
-        { id: "node-3", definitionId: "email", label: "Welcome Email", config: getDefaultConfigForDefinition("email", p) },
-      ],
-      edges: [
-        { id: "e1", source: "node-1", target: "node-2", sourceHandle: "out", targetHandle: "in" },
-        { id: "e2", source: "node-2", target: "node-3", sourceHandle: "out", targetHandle: "in" },
-      ],
-    };
-  }
-
-  // Pattern 3: Webhook / Form Ingestion -> Transform -> AI -> Switch -> Telegram / Sheets
-  if (p.includes("webhook") || p.includes("lead") || p.includes("form") || p.includes("ticket")) {
-    const hasSheets = p.includes("sheets") || p.includes("google");
-    const hasTelegram = p.includes("telegram");
+    const validNonTriggers = nonTriggers
+      .filter((n) => !forbidden.has(n))
+      .sort((a, b) => (NODE_CATEGORY_ORDER[a] || 99) - (NODE_CATEGORY_ORDER[b] || 99));
 
     const nodes: GeneratedWorkflowData["nodes"] = [
-      { id: "node-1", definitionId: "webhook", label: "Webhook Trigger", config: getDefaultConfigForDefinition("webhook", p) },
-      { id: "node-2", definitionId: "transform", label: "Normalize Payload", config: getDefaultConfigForDefinition("transform", p) },
-      { id: "node-3", definitionId: "ai", label: "Qualify Payload", config: getDefaultConfigForDefinition("ai", p) },
-      { id: "node-4", definitionId: "switch", label: "Route Priority Tier", config: getDefaultConfigForDefinition("switch", p) },
+      {
+        id: "node-1",
+        definitionId: trigger as unknown as (typeof ALL_NODE_DEFINITION_IDS)[number],
+        label: trigger === "schedule" ? "Schedule Trigger" : trigger === "webhook" ? "Webhook Trigger" : "Manual Trigger",
+        config: getDefaultConfigForDefinition(trigger, p),
+      },
     ];
 
-    const edges: GeneratedWorkflowData["edges"] = [
-      { id: "e1", source: "node-1", target: "node-2", sourceHandle: "out", targetHandle: "in" },
-      { id: "e2", source: "node-2", target: "node-3", sourceHandle: "out", targetHandle: "in" },
-      { id: "e3", source: "node-3", target: "node-4", sourceHandle: "out", targetHandle: "in" },
-    ];
+    const edges: GeneratedWorkflowData["edges"] = [];
+    let currentSourceId = "node-1";
+    let currentSourceHandle = "out";
 
-    if (hasTelegram) {
-      nodes.push({ id: "node-5", definitionId: "telegram", label: "Send Telegram Alert", config: getDefaultConfigForDefinition("telegram", p) });
-      edges.push({ id: "e4", source: "node-4", target: "node-5", sourceHandle: "case_1", targetHandle: "in" });
-    }
+    let ifNodeId: string | null = null;
 
-    if (hasSheets || !hasTelegram) {
-      nodes.push({ id: "node-6", definitionId: "google-sheets", label: "Log to Google Sheets", config: getDefaultConfigForDefinition("google-sheets", p) });
-      edges.push({ id: "e5", source: "node-4", target: "node-6", sourceHandle: "default", targetHandle: "in" });
+    for (let i = 0; i < validNonTriggers.length; i++) {
+      const defId = validNonTriggers[i];
+      const nodeId = `node-${i + 2}`;
+      const label = NODE_KNOWLEDGE_SPECS[defId]?.name || defId;
+
+      nodes.push({
+        id: nodeId,
+        definitionId: defId as unknown as (typeof ALL_NODE_DEFINITION_IDS)[number],
+        label,
+        config: getDefaultConfigForDefinition(defId, p),
+      });
+
+      const ifIdx = ifNodeId ? nodes.findIndex((n) => n.id === ifNodeId) : -1;
+      const stepsAfterIf = ifIdx >= 0 ? nodes.length - 1 - ifIdx : 0;
+
+      if (defId === "if") {
+        ifNodeId = nodeId;
+        edges.push({
+          id: `e-${edges.length + 1}`,
+          source: currentSourceId,
+          target: nodeId,
+          sourceHandle: currentSourceHandle,
+          targetHandle: "in",
+        });
+      } else if (ifNodeId && stepsAfterIf === 1) {
+        edges.push({
+          id: `e-${edges.length + 1}`,
+          source: ifNodeId,
+          target: nodeId,
+          sourceHandle: "true",
+          targetHandle: "in",
+        });
+        currentSourceId = nodeId;
+        currentSourceHandle = "out";
+      } else if (ifNodeId && stepsAfterIf === 2) {
+        edges.push({
+          id: `e-${edges.length + 1}`,
+          source: ifNodeId,
+          target: nodeId,
+          sourceHandle: "false",
+          targetHandle: "in",
+        });
+        currentSourceId = nodeId;
+        currentSourceHandle = "out";
+      } else {
+        edges.push({
+          id: `e-${edges.length + 1}`,
+          source: currentSourceId,
+          target: nodeId,
+          sourceHandle: currentSourceHandle,
+          targetHandle: "in",
+        });
+        currentSourceId = nodeId;
+        currentSourceHandle = "out";
+      }
     }
 
     return {
-      name: "Automated Webhook Lead & Ticket Router",
-      description: "Ingests form webhook data, normalizes fields with Transform, evaluates intent via AI, and routes output.",
+      name: `Automated Workflow: ${effectivePlan.goal || prompt}`,
+      description: `Workflow architect generated graph for: ${prompt}`,
       nodes,
       edges,
     };
   }
 
-  // Pattern 4: Schedule -> HTTP Request -> Slack (Direct weather/feed fetch)
-  if (p.includes("weather") || (p.includes("schedule") && p.includes("http"))) {
-    return {
-      name: "Scheduled Weather Fetcher",
-      description: "Daily weather data fetcher dispatching to Slack",
-      nodes: [
-        { id: "node-1", definitionId: "schedule", label: "Schedule Trigger", config: getDefaultConfigForDefinition("schedule", p) },
-        { id: "node-2", definitionId: "http-request", label: "Fetch Weather Data", config: getDefaultConfigForDefinition("http-request", p) },
-        { id: "node-3", definitionId: "slack", label: "Post to Slack", config: getDefaultConfigForDefinition("slack", p) },
-      ],
-      edges: [
-        { id: "e1", source: "node-1", target: "node-2", sourceHandle: "out", targetHandle: "in" },
-        { id: "e2", source: "node-2", target: "node-3", sourceHandle: "out", targetHandle: "in" },
-      ],
-    };
-  }
-
-  // Pattern 2: Schedule -> HTTP Request / Sheets -> AI -> Loop / Notification
-  if (p.includes("schedule") || p.includes("morning") || p.includes("every") || p.includes("news") || p.includes("monitor")) {
-    const hasDiscord = p.includes("discord");
-    const hasTelegram = p.includes("telegram");
-    const hasSlack = p.includes("slack");
-
-    const targetNotify = hasDiscord ? "discord" : hasTelegram ? "telegram" : hasSlack ? "slack" : "email";
-    const notifyLabel = hasDiscord ? "Alert Discord" : hasTelegram ? "Send Telegram Alert" : hasSlack ? "Notify Slack" : "Email Digest";
-
-    return {
-      name: "Scheduled AI News & Monitoring Digest",
-      description: "Scheduled workflow to fetch target feed, analyze insights using AI, and dispatch alert notifications.",
-      nodes: [
-        { id: "node-1", definitionId: "schedule", label: "Schedule Trigger", config: getDefaultConfigForDefinition("schedule", p) },
-        { id: "node-2", definitionId: "http-request", label: "Fetch Feed Data", config: getDefaultConfigForDefinition("http-request", p) },
-        { id: "node-3", definitionId: "ai", label: "Extract AI Insights", config: getDefaultConfigForDefinition("ai", p) },
-        { id: "node-4", definitionId: targetNotify, label: notifyLabel, config: getDefaultConfigForDefinition(targetNotify, p) },
-      ],
-      edges: [
-        { id: "e1", source: "node-1", target: "node-2", sourceHandle: "out", targetHandle: "in" },
-        { id: "e2", source: "node-2", target: "node-3", sourceHandle: "out", targetHandle: "in" },
-        { id: "e3", source: "node-3", target: "node-4", sourceHandle: "out", targetHandle: "in" },
-      ],
-    };
-  }
-
-  // Generic Fallback
+  // Fallback pattern matching if no specific requiredNodes were specified
   return {
     name: "Custom AI Automated Workflow",
     description: `Generated workflow for: ${prompt}`,
@@ -235,6 +235,86 @@ export function generateOfflineWorkflow(prompt: string): GeneratedWorkflowData {
       { id: "e2", source: "node-2", target: "node-3", sourceHandle: "out", targetHandle: "in" },
     ],
   };
+}
+
+/**
+ * Gemini 3.8 Flash LLM Direct Generator & Repair Engine
+ */
+async function callGemini38Flash(
+  promptText: string,
+  plan: WorkflowPlanData,
+  repairContext?: { errors: string[]; previousGraph: GeneratedWorkflowData },
+): Promise<GeneratedWorkflowData | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey.trim() === "") return null;
+
+  const systemPrompt = `You are Neuraloop's Nori AI Workflow Architect. Convert natural language user prompts into a structured JSON workflow graph.
+
+Available 20 Node Definition IDs (YOU MUST ONLY USE THESE EXACT STRINGS):
+${ALL_NODE_DEFINITION_IDS.map((id) => `- "${id}"`).join("\n")}
+
+STRICT GENERATION RULES:
+1. Trigger Node: The workflow MUST start with exactly one trigger node ("manual-trigger", "webhook", or "schedule").
+2. Required Nodes: You MUST include these nodes in the graph: ${plan.requiredNodes.length > 0 ? plan.requiredNodes.join(", ") : "none"}.
+3. Forbidden Nodes: You MUST NOT include any of these nodes in the graph: ${plan.forbiddenNodes.length > 0 ? plan.forbiddenNodes.join(", ") : "none"}.
+4. Handle Names:
+   - Standard nodes: sourceHandle: "out", targetHandle: "in"
+   - IF node: sourceHandle: "true" (for true branch), "false" (for false branch), targetHandle: "in"
+   - Switch node: sourceHandle: "case_1", "case_2", "default", targetHandle: "in"
+   - Loop node: sourceHandle: "out", targetHandle: "in"
+
+OUTPUT JSON SCHEMA:
+{
+  "name": "Short Descriptive Title",
+  "description": "Clear overview of workflow actions",
+  "nodes": [
+    { "id": "node-1", "definitionId": "definitionId", "label": "Node Label", "config": {} }
+  ],
+  "edges": [
+    { "id": "e1", "source": "node-1", "target": "node-2", "sourceHandle": "out", "targetHandle": "in" }
+  ]
+}`;
+
+  let userContent = `User Prompt: ${promptText}\nGoal: ${plan.goal}\nRequired Nodes: ${JSON.stringify(plan.requiredNodes)}\nForbidden Nodes: ${JSON.stringify(plan.forbiddenNodes)}`;
+
+  if (repairContext) {
+    userContent += `\n\nREPAIR INSTRUCTIONS:
+The previous generated graph failed validation with errors:
+${repairContext.errors.map((e) => `- ${e}`).join("\n")}
+
+Previous Invalid Graph:
+${JSON.stringify(repairContext.previousGraph, null, 2)}
+
+Please fix all validation errors and return a corrected JSON workflow.`;
+  }
+
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: `${systemPrompt}\n\n${userContent}` }] }],
+        generationConfig: {
+          temperature: 0.1,
+          responseMimeType: "application/json",
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      return null;
+    }
+
+    const resData = await res.json();
+    const textStr = resData.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!textStr) return null;
+
+    const parsed = JSON.parse(textStr);
+    return GeneratedWorkflowSchema.parse(parsed);
+  } catch {
+    return null;
+  }
 }
 
 export class WorkflowGenerationService {
@@ -256,7 +336,7 @@ export class WorkflowGenerationService {
     optimizations: WorkflowOptimizationResult;
     architectureScore: ArchitectureScoreResult;
     generationId: string;
-    mode: "template-adapted" | "template-starting-point" | "openai" | "offline-generator";
+    mode: "template-adapted" | "template-starting-point" | "gemini-3.8-flash" | "openai" | "offline-generator";
   }> {
     const { prompt, clientId = "unknown", userId, userContext } = options;
 
@@ -269,34 +349,51 @@ export class WorkflowGenerationService {
       throw new Error("RATE_LIMIT_EXCEEDED: Generation rate limit reached (20 generations per hour). Please try again later.");
     }
 
-    // 1. Tiered Template Matcher (score >= 0.85 -> useTemplate, 0.60 <= score < 0.85 -> useTemplateAsStartingPoint)
-    const templateMatch = TemplateMatcher.matchAndAdapt(prompt);
-    let mode: "template-adapted" | "template-starting-point" | "openai" | "offline-generator" = "offline-generator";
-    let rawGeneratedData: GeneratedWorkflowData;
-
-    // 2. Credential-Aware Multi-Stage Planning
+    // 1. Credential & Intent-Aware Multi-Stage Planning
     const plan = WorkflowPlanner.createPlan(prompt, userContext);
 
+    // 2. Template Matching Check
+    const templateMatch = TemplateMatcher.matchAndAdapt(prompt);
+    let mode: "template-adapted" | "template-starting-point" | "gemini-3.8-flash" | "openai" | "offline-generator" = "offline-generator";
+    let rawGeneratedData: GeneratedWorkflowData | null = null;
+
+    // Check if template match satisfies required & forbidden nodes
     if (templateMatch.matched && templateMatch.adaptedWorkflow) {
-      rawGeneratedData = templateMatch.adaptedWorkflow;
-      mode = templateMatch.matchMode === "useTemplate" ? "template-adapted" : "template-starting-point";
-    } else {
-      const apiKey = process.env.OPENAI_API_KEY;
-      if (apiKey && apiKey.trim() !== "") {
-        try {
-          const response = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify({
-              model: "gpt-4o-mini",
-              response_format: { type: "json_object" },
-              messages: [
-                {
-                  role: "system",
-                  content: `You are Neuraloop's AI Workflow Architect. Convert natural language prompts into a valid JSON workflow graph.
+      const tplNodes = new Set(templateMatch.adaptedWorkflow.nodes.map((n) => n.definitionId));
+      const hasForbidden = plan.forbiddenNodes.some((f) => tplNodes.has(f as unknown as typeof templateMatch.adaptedWorkflow.nodes[0]["definitionId"]));
+      const hasAllRequired = plan.requiredNodes.every((r) => tplNodes.has(r as unknown as typeof templateMatch.adaptedWorkflow.nodes[0]["definitionId"]));
+
+      if (!hasForbidden && hasAllRequired) {
+        rawGeneratedData = templateMatch.adaptedWorkflow;
+        mode = templateMatch.matchMode === "useTemplate" ? "template-adapted" : "template-starting-point";
+      }
+    }
+
+    // 3. Gemini 3.8 Flash Reasoning Engine Generation
+    if (!rawGeneratedData && process.env.GEMINI_API_KEY) {
+      const geminiData = await callGemini38Flash(prompt, plan);
+      if (geminiData) {
+        rawGeneratedData = geminiData;
+        mode = "gemini-3.8-flash";
+      }
+    }
+
+    // 4. OpenAI Fallback Generation
+    if (!rawGeneratedData && process.env.OPENAI_API_KEY) {
+      try {
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            response_format: { type: "json_object" },
+            messages: [
+              {
+                role: "system",
+                content: `You are Neuraloop's AI Workflow Architect. Convert natural language prompts into a valid JSON workflow graph.
 
 Available Node definitionIds (YOU MUST ONLY USE THESE EXACT KEYS):
 ${ALL_NODE_DEFINITION_IDS.map((id) => `- "${id}"`).join("\n")}
@@ -306,10 +403,6 @@ Handle Naming Conventions:
 - IF Nodes: sourceHandle: "true" or "false"
 - Switch Nodes: sourceHandle: "case_1", "case_2", or "default"
 
-OAuth Connection Rules:
-- When prompt references GitHub, Slack, or Google Workspace APIs, use "http-request" node with:
-  "authType": "oauth_connection", "connectionProvider": "github" | "slack" | "google"
-
 Output JSON Schema:
 {
   "name": "string",
@@ -317,34 +410,61 @@ Output JSON Schema:
   "nodes": [{ "id": "node-1", "definitionId": "definitionId", "label": "Label", "config": {} }],
   "edges": [{ "id": "e1", "source": "node-1", "target": "node-2", "sourceHandle": "out|true|false|case_1|default", "targetHandle": "in" }]
 }`,
-                },
-                { role: "user", content: `Prompt: ${prompt}\nPlanned Goal: ${plan.goal}\nRecommended Pattern: ${plan.recommendedPattern}` },
-              ],
-            }),
-          });
+              },
+              { role: "user", content: `Prompt: ${prompt}\nPlanned Goal: ${plan.goal}\nRequired Nodes: ${JSON.stringify(plan.requiredNodes)}\nForbidden Nodes: ${JSON.stringify(plan.forbiddenNodes)}` },
+            ],
+          }),
+        });
 
-          if (response.ok) {
-            const resData = await response.json();
-            const contentStr = resData.choices?.[0]?.message?.content;
-            if (contentStr) {
-              const parsed = JSON.parse(contentStr);
-              rawGeneratedData = GeneratedWorkflowSchema.parse(parsed);
-              mode = "openai";
-            } else {
-              rawGeneratedData = generateOfflineWorkflow(prompt);
-            }
-          } else {
-            rawGeneratedData = generateOfflineWorkflow(prompt);
+        if (response.ok) {
+          const resData = await response.json();
+          const contentStr = resData.choices?.[0]?.message?.content;
+          if (contentStr) {
+            rawGeneratedData = GeneratedWorkflowSchema.parse(JSON.parse(contentStr));
+            mode = "openai";
           }
-        } catch {
-          rawGeneratedData = generateOfflineWorkflow(prompt);
         }
-      } else {
-        rawGeneratedData = generateOfflineWorkflow(prompt);
+      } catch {
+        // Fall through to offline generator
       }
     }
 
-    // 3. Schema Validation & Canvas Transformation
+    // 5. Offline Deterministic Architect Generator
+    if (!rawGeneratedData) {
+      rawGeneratedData = generateOfflineWorkflow(prompt, plan);
+      mode = "offline-generator";
+    }
+
+    // 6. Pre-Creation Validation & Automated Repair Loop (Max 2 Attempts)
+    let validation = WorkflowValidator.validateGraph(rawGeneratedData, plan);
+    let repairAttempts = 0;
+
+    while (!validation.isValid && repairAttempts < 2) {
+      repairAttempts++;
+      if (process.env.GEMINI_API_KEY) {
+        const repairedData = await callGemini38Flash(prompt, plan, {
+          errors: validation.errors,
+          previousGraph: rawGeneratedData,
+        });
+        if (repairedData) {
+          rawGeneratedData = repairedData;
+          validation = WorkflowValidator.validateGraph(rawGeneratedData, plan);
+        } else {
+          break;
+        }
+      } else {
+        break;
+      }
+    }
+
+    // Deterministic Repair Fallback if validation still fails after repair loop
+    if (!validation.isValid) {
+      rawGeneratedData = generateOfflineWorkflow(prompt, plan);
+      validation = WorkflowValidator.validateGraph(rawGeneratedData, plan);
+      mode = "offline-generator";
+    }
+
+    // 7. Schema Validation & Canvas Transformation
     const validatedData = GeneratedWorkflowSchema.parse(rawGeneratedData);
 
     const canonicalNodes: WorkflowNode[] = validatedData.nodes.map((n, idx) => {
@@ -384,22 +504,19 @@ Output JSON Schema:
       edges: canonicalEdges,
     });
 
-    // 4. Pre-Creation Graph Validation
-    const validation = WorkflowValidator.validateGraph(validatedData);
-
-    // 5. Non-Destructive Auto-Optimization Engine
+    // 8. Non-Destructive Auto-Optimization Engine
     const { optimizations } = WorkflowOptimizer.optimizeGraph(validatedData);
 
-    // 6. Compute 0-100 Architecture Score
+    // 9. Compute 0-100 Architecture Score
     const architectureScore = ArchitectureScorer.computeScore(validatedData);
 
-    // 7. Grid Auto-Layout
+    // 10. Grid Auto-Layout
     const { nodes: layoutNodes, edges: layoutEdges } = applyAutoLayout(cleanNodes, cleanEdges);
 
-    // 8. Natural Language Explanation Generator
+    // 11. Natural Language Explanation Generator
     const explanation = WorkflowExplainer.explainWorkflow(validatedData, plan);
 
-    // 9. Template Learning Analytics Tracking
+    // 12. Template Learning Analytics Tracking
     const generationId = `gen-${makeId("g")}`;
     await TemplateUsageAnalytics.logGeneration({
       userId,
@@ -428,9 +545,6 @@ Output JSON Schema:
     };
   }
 
-  /**
-   * Phase 20.5: Conversational "Ask Nori" Workflow Refinements Engine
-   */
   static refineWorkflow(
     currentWorkflow: GeneratedWorkflowData,
     refinementPrompt: string,

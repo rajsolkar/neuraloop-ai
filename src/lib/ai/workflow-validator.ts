@@ -1,25 +1,52 @@
 /**
  * Neuraloop Phase 20 — AI Workflow Pre-Creation Validator Engine
  * Validates generated workflow graph structure, handle connections, credential requirements,
- * dynamic handlebars variable expression references, and node configurations before creation.
+ * required/forbidden node constraints, variable expressions, and node configs before creation.
  */
 
 import { NODE_KNOWLEDGE_SPECS } from "./workflow-knowledge-base";
-import type { GeneratedWorkflowData, WorkflowValidationResultData } from "./schema";
+import type { GeneratedWorkflowData, WorkflowPlanData, WorkflowValidationResultData } from "./schema";
 
 export class WorkflowValidator {
-  static validateGraph(workflow: GeneratedWorkflowData): WorkflowValidationResultData {
+  static validateGraph(
+    workflow: GeneratedWorkflowData,
+    plan?: WorkflowPlanData,
+  ): WorkflowValidationResultData {
     const errors: string[] = [];
     const warnings: string[] = [];
+    const missingRequiredNodes: string[] = [];
+    const forbiddenNodesFound: string[] = [];
 
     const { nodes, edges } = workflow;
 
     if (!nodes || nodes.length === 0) {
       errors.push("GRAPH_EMPTY: Workflow graph contains zero nodes.");
-      return { isValid: false, errors, warnings };
+      return { isValid: false, errors, warnings, missingRequiredNodes, forbiddenNodesFound };
     }
 
-    // 1. Structural Trigger Validation
+    const presentDefIds = new Set(nodes.map((n) => n.definitionId));
+
+    // 1. Hard Constraints: Required Nodes Validation
+    if (plan && plan.requiredNodes) {
+      for (const req of plan.requiredNodes) {
+        if (!presentDefIds.has(req as unknown as typeof nodes[0]["definitionId"])) {
+          errors.push(`MISSING_REQUIRED_NODE: Required node '${req}' is missing from the generated workflow graph.`);
+          missingRequiredNodes.push(req);
+        }
+      }
+    }
+
+    // 2. Hard Constraints: Forbidden Nodes Validation
+    if (plan && plan.forbiddenNodes) {
+      for (const forbidden of plan.forbiddenNodes) {
+        if (presentDefIds.has(forbidden as unknown as typeof nodes[0]["definitionId"])) {
+          errors.push(`FORBIDDEN_NODE_PRESENT: Node '${forbidden}' was explicitly forbidden by user directive but present in graph.`);
+          forbiddenNodesFound.push(forbidden);
+        }
+      }
+    }
+
+    // 3. Structural Trigger Validation
     const triggerNodes = nodes.filter((n) => {
       const spec = NODE_KNOWLEDGE_SPECS[n.definitionId];
       return spec ? spec.isTrigger : ["manual-trigger", "webhook", "schedule"].includes(n.definitionId);
@@ -29,7 +56,7 @@ export class WorkflowValidator {
       errors.push("MISSING_TRIGGER: Graph must contain at least one trigger node (manual-trigger, webhook, or schedule).");
     }
 
-    // 2. Orphan Node Validation
+    // 4. Orphan Node & Edge Connectivity Validation
     const nodeIds = new Set(nodes.map((n) => n.id));
     const connectedNodeIds = new Set<string>();
 
@@ -52,7 +79,7 @@ export class WorkflowValidator {
       }
     }
 
-    // 3. Credential & Required Config Field Validation
+    // 5. Credential & Required Config Field Validation
     for (const node of nodes) {
       const config = node.config || {};
       const defId = node.definitionId;
@@ -63,12 +90,12 @@ export class WorkflowValidator {
         }
       }
 
-      if (defId === "telegram" && !config.chatId) {
-        warnings.push(`TELEGRAM_CHAT_ID_MISSING: Telegram node '${node.label}' is missing a target chatId.`);
+      if (defId === "telegram" && !config.chatId && !config.message) {
+        warnings.push(`TELEGRAM_CONFIG_MISSING: Telegram node '${node.label}' is missing chatId or message template.`);
       }
 
       if (defId === "slack" && !config.channel && !config.message) {
-        warnings.push(`SLACK_CHANNEL_MISSING: Slack node '${node.label}' is missing channel or message configuration.`);
+        warnings.push(`SLACK_CONFIG_MISSING: Slack node '${node.label}' is missing channel or message configuration.`);
       }
 
       if (defId === "email" && !config.to) {
@@ -76,7 +103,7 @@ export class WorkflowValidator {
       }
     }
 
-    // 4. Handlebars Variable Expression Resolution Check
+    // 6. Handlebars Variable Expression Resolution Check
     const declaredNodeIds = new Set(nodes.map((n) => n.id));
     const expressionRegex = /\{\{\s*steps\.([a-zA-Z0-9_\-]+)\.([a-zA-Z0-9_.]+)\s*\}\}/g;
 
@@ -92,6 +119,12 @@ export class WorkflowValidator {
     }
 
     const isValid = errors.length === 0;
-    return { isValid, errors, warnings };
+    return {
+      isValid,
+      errors,
+      warnings,
+      missingRequiredNodes,
+      forbiddenNodesFound,
+    };
   }
 }
