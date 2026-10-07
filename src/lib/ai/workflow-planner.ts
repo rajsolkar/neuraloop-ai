@@ -258,6 +258,151 @@ export class WorkflowPlanner {
       estimatedComplexity,
     };
   }
+
+  static reconcilePlanWithGraph(
+    plan: WorkflowPlanData,
+    workflow: import("./schema").GeneratedWorkflowData,
+    context: PlannerUserContext = {},
+  ): WorkflowPlanData {
+    const activeOAuth = new Set((context.availableOAuthConnections || []).map((c) => c.toLowerCase()));
+    const activeCreds = new Set((context.availableCredentials || []).map((c) => c.toLowerCase()));
+
+    const actualDefIds = new Set(workflow.nodes.map((n) => n.definitionId));
+
+    const actions: string[] = [];
+    const integrations: string[] = [];
+    const credentialsNeeded: string[] = [];
+    const requiredNodes: string[] = Array.from(actualDefIds);
+
+    if (actualDefIds.has("ai")) {
+      actions.push("AI Agent (LLM)");
+      integrations.push("OpenAI / Claude / Gemini");
+      if (!activeCreds.has("openai") && !activeCreds.has("claude") && !activeCreds.has("gemini")) {
+        credentialsNeeded.push("Required Credential: AI Provider API Key (BYOK Vault)");
+      } else {
+        credentialsNeeded.push("Using Active BYOK Vault Credential");
+      }
+    }
+
+    if (actualDefIds.has("http-request")) {
+      actions.push("HTTP Request Pro");
+      const httpNode = workflow.nodes.find((n) => n.definitionId === "http-request");
+      const configStr = JSON.stringify(httpNode?.config || {}).toLowerCase();
+      if (configStr.includes("github")) {
+        integrations.push("GitHub API");
+        if (activeOAuth.has("github")) {
+          credentialsNeeded.push("Bound to Active GitHub OAuth Connection");
+        } else {
+          credentialsNeeded.push("Required Connection: GitHub OAuth Connection");
+        }
+      } else {
+        integrations.push("External REST API");
+      }
+    }
+
+    if (actualDefIds.has("telegram")) {
+      actions.push("Telegram Notification");
+      integrations.push("Telegram Bot");
+      if (!activeCreds.has("telegram")) {
+        credentialsNeeded.push("Required Credential: Telegram Bot Token");
+      } else {
+        credentialsNeeded.push("Using Active Telegram Credentials");
+      }
+    }
+
+    if (actualDefIds.has("slack")) {
+      actions.push("Slack Notification");
+      integrations.push("Slack Workspace");
+      if (activeOAuth.has("slack")) {
+        credentialsNeeded.push("Bound to Active Slack OAuth Connection");
+      } else {
+        credentialsNeeded.push("Required Connection: Slack OAuth Connection");
+      }
+    }
+
+    if (actualDefIds.has("discord")) {
+      actions.push("Discord Webhook");
+      integrations.push("Discord Server");
+      credentialsNeeded.push("Discord Webhook URL");
+    }
+
+    if (actualDefIds.has("google-sheets")) {
+      actions.push("Google Sheets");
+      integrations.push("Google Workspace");
+      if (activeOAuth.has("google")) {
+        credentialsNeeded.push("Bound to Active Google Workspace OAuth Connection");
+      } else {
+        credentialsNeeded.push("Required Connection: Google Workspace OAuth Connection");
+      }
+    }
+
+    if (actualDefIds.has("email")) {
+      actions.push("Email Notification");
+      integrations.push("SMTP Email");
+      credentialsNeeded.push("SMTP Server Credentials");
+    }
+
+    if (actualDefIds.has("switch") || actualDefIds.has("if")) {
+      actions.push("Conditional Branching (Switch / IF)");
+    }
+
+    if (actualDefIds.has("loop")) {
+      actions.push("Loop Execution");
+    }
+
+    if (actualDefIds.has("transform")) {
+      actions.push("Data Transform");
+    }
+
+    if (actualDefIds.has("code")) {
+      actions.push("Custom JavaScript Code");
+    }
+
+    if (actualDefIds.has("webhook-response")) {
+      actions.push("HTTP Webhook Response");
+    }
+
+    if (actions.length === 0) {
+      actions.push("HTTP Action");
+      integrations.push("REST API");
+    }
+
+    let triggerType = plan.triggerType;
+    if (actualDefIds.has("schedule")) triggerType = "schedule";
+    else if (actualDefIds.has("webhook")) triggerType = "webhook";
+    else if (actualDefIds.has("manual-trigger")) triggerType = "manual-trigger";
+
+    const forbiddenNodes = (plan.forbiddenNodes || []).filter(
+      (f) => !actualDefIds.has(f as unknown as typeof workflow.nodes[0]["definitionId"]),
+    );
+
+    const variablesUsed: string[] = ["input (Trigger Payload)"];
+    if (actualDefIds.has("ai")) variablesUsed.push("steps.ai.output.text");
+    if (actualDefIds.has("http-request")) variablesUsed.push("steps.http.output.body");
+    if (actualDefIds.has("transform")) variablesUsed.push("steps.transform.output.result");
+    if (actualDefIds.has("loop")) variablesUsed.push("loop.item");
+
+    const totalStepCount = workflow.nodes.length;
+    let estimatedComplexity: WorkflowPlanData["estimatedComplexity"] = "low";
+    if (totalStepCount >= 5 || actualDefIds.has("loop") || actualDefIds.has("switch") || actualDefIds.has("if")) {
+      estimatedComplexity = "high";
+    } else if (totalStepCount >= 3) {
+      estimatedComplexity = "medium";
+    }
+
+    return {
+      goal: plan.goal,
+      triggerType,
+      requiredNodes,
+      forbiddenNodes,
+      actions,
+      integrations: Array.from(new Set(integrations)),
+      credentialsNeeded: Array.from(new Set(credentialsNeeded)),
+      variablesUsed: Array.from(new Set(variablesUsed)),
+      recommendedPattern: plan.recommendedPattern || "Custom",
+      estimatedComplexity,
+    };
+  }
 }
 
 export function generateConciseWorkflowName(
