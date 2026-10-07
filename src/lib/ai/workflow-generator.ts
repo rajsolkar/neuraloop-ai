@@ -12,13 +12,14 @@ import { applyAutoLayout } from "./auto-layout";
 import {
   ALL_NODE_DEFINITION_IDS,
   GeneratedWorkflowSchema,
+  normalizeWorkflowName,
   type GeneratedWorkflowData,
   type WorkflowPlanData,
   type WorkflowExplanationData,
   type WorkflowValidationResultData,
 } from "./schema";
 import { TemplateMatcher, type TemplateMatchMode } from "./template-matcher";
-import { WorkflowPlanner, type PlannerUserContext } from "./workflow-planner";
+import { WorkflowPlanner, generateConciseWorkflowName, type PlannerUserContext } from "./workflow-planner";
 import { WorkflowValidator } from "./workflow-validator";
 import { WorkflowOptimizer, type WorkflowOptimizationResult } from "./workflow-optimizer";
 import { WorkflowExplainer } from "./workflow-explainer";
@@ -214,7 +215,7 @@ export function generateOfflineWorkflow(
     }
 
     return {
-      name: `Automated Workflow: ${effectivePlan.goal || prompt}`,
+      name: generateConciseWorkflowName(prompt, effectivePlan),
       description: `Workflow architect generated graph for: ${prompt}`,
       nodes,
       edges,
@@ -223,7 +224,7 @@ export function generateOfflineWorkflow(
 
   // Fallback pattern matching if no specific requiredNodes were specified
   return {
-    name: "Custom AI Automated Workflow",
+    name: generateConciseWorkflowName(prompt, effectivePlan),
     description: `Generated workflow for: ${prompt}`,
     nodes: [
       { id: "node-1", definitionId: "manual-trigger", label: "Manual Trigger", config: {} },
@@ -311,6 +312,9 @@ Please fix all validation errors and return a corrected JSON workflow.`;
     if (!textStr) return null;
 
     const parsed = JSON.parse(textStr);
+    if (parsed && typeof parsed === "object") {
+      parsed.name = generateConciseWorkflowName(promptText, plan, (parsed as Record<string, unknown>).name as string);
+    }
     return GeneratedWorkflowSchema.parse(parsed);
   } catch {
     return null;
@@ -465,6 +469,9 @@ Output JSON Schema:
     }
 
     // 7. Schema Validation & Canvas Transformation
+    if (rawGeneratedData) {
+      rawGeneratedData.name = generateConciseWorkflowName(prompt, plan, rawGeneratedData.name);
+    }
     const validatedData = GeneratedWorkflowSchema.parse(rawGeneratedData);
 
     const canonicalNodes: WorkflowNode[] = validatedData.nodes.map((n, idx) => {

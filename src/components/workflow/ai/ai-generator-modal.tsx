@@ -130,7 +130,10 @@ export function AiGeneratorModal({ open, onOpenChange, targetWorkflowId }: AiGen
       setStep("preview");
       toast("AI Architect designed your workflow graph!");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Generation failed";
+      let msg = err instanceof Error ? err.message : "Generation failed";
+      if (msg.trim().startsWith("[") || msg.trim().startsWith("{")) {
+        msg = "Nori couldn't create the workflow. Please try again.";
+      }
       setErrorMsg(msg);
       setStep("input");
       toast("Workflow generation failed", { tone: "error" });

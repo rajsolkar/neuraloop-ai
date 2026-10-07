@@ -71,10 +71,28 @@ export async function POST(request: Request) {
       { status: 200 },
     );
   } catch (err: unknown) {
+    console.error("[Nori Architect API Error]", err);
     const errorMsg = err instanceof Error ? err.message : String(err);
     const isRateLimit = errorMsg.includes("RATE_LIMIT_EXCEEDED");
-    const status = isRateLimit ? 429 : 500;
+    const isPromptRequired = errorMsg.includes("PROMPT_REQUIRED");
 
-    return NextResponse.json({ error: errorMsg }, { status });
+    if (isRateLimit) {
+      return NextResponse.json(
+        { error: "RATE_LIMIT_EXCEEDED: Generation rate limit reached. Please try again later." },
+        { status: 429 },
+      );
+    }
+
+    if (isPromptRequired) {
+      return NextResponse.json(
+        { error: "PROMPT_REQUIRED: Please provide a natural language prompt describing the workflow." },
+        { status: 400 },
+      );
+    }
+
+    return NextResponse.json(
+      { error: "Nori couldn't create the workflow. Please try again." },
+      { status: 500 },
+    );
   }
 }

@@ -29,6 +29,30 @@ export const ALL_NODE_DEFINITION_IDS = [
   "transform",
 ] as const;
 
+export function normalizeWorkflowName(name?: string | null): string {
+  if (!name || typeof name !== "string") {
+    return "AI Generated Workflow";
+  }
+
+  let cleanName = name.trim().replace(/\s+/g, " ");
+
+  if (!cleanName) {
+    return "AI Generated Workflow";
+  }
+
+  if (cleanName.length > 100) {
+    const truncated = cleanName.slice(0, 100);
+    const lastSpace = truncated.lastIndexOf(" ");
+    if (lastSpace > 60) {
+      cleanName = truncated.slice(0, lastSpace).trim();
+    } else {
+      cleanName = truncated.trim();
+    }
+  }
+
+  return cleanName || "AI Generated Workflow";
+}
+
 export const StructuredIntentSchema = z.object({
   trigger: z.enum(["manual-trigger", "webhook", "schedule"]),
   requiredNodes: z.array(z.enum(ALL_NODE_DEFINITION_IDS)),
@@ -54,7 +78,10 @@ export const GeneratedEdgeSchema = z.object({
 });
 
 export const GeneratedWorkflowSchema = z.object({
-  name: z.string().min(1).max(100),
+  name: z
+    .string()
+    .transform((val) => normalizeWorkflowName(val))
+    .pipe(z.string().min(1).max(100)),
   description: z.string().default("AI-generated workflow"),
   nodes: z.array(GeneratedNodeSchema).min(1),
   edges: z.array(GeneratedEdgeSchema).default([]),

@@ -4,7 +4,7 @@
  * extracting structured intent, explicit requirements, explicit exclusions, and checking user credentials.
  */
 
-import type { ALL_NODE_DEFINITION_IDS, StructuredIntentData, WorkflowPlanData } from "./schema";
+import { normalizeWorkflowName, type ALL_NODE_DEFINITION_IDS, type StructuredIntentData, type WorkflowPlanData } from "./schema";
 
 export interface PlannerUserContext {
   availableCredentials?: string[];
@@ -258,4 +258,94 @@ export class WorkflowPlanner {
       estimatedComplexity,
     };
   }
+}
+
+export function generateConciseWorkflowName(
+  prompt: string,
+  plan?: WorkflowPlanData,
+  rawName?: string,
+): string {
+  if (rawName) {
+    const trimmedRaw = rawName.trim();
+    if (
+      trimmedRaw.length > 0 &&
+      trimmedRaw.length <= 100 &&
+      trimmedRaw !== prompt.trim() &&
+      !trimmedRaw.toLowerCase().startsWith("automated workflow:") &&
+      !trimmedRaw.toLowerCase().startsWith("generated workflow for:") &&
+      !trimmedRaw.toLowerCase().startsWith("custom ai automated workflow")
+    ) {
+      return normalizeWorkflowName(trimmedRaw);
+    }
+  }
+
+  const p = prompt.toLowerCase();
+  const req = new Set(plan?.requiredNodes || []);
+
+  // 1. Determine Trigger Phrase
+  let triggerPrefix = "";
+  if (p.includes("every morning") || p.includes("daily")) {
+    triggerPrefix = "Daily";
+  } else if (p.includes("every hour") || p.includes("hourly")) {
+    triggerPrefix = "Hourly";
+  } else if (p.includes("every monday") || p.includes("weekly")) {
+    triggerPrefix = "Weekly";
+  } else if (plan?.triggerType === "schedule" || req.has("schedule")) {
+    triggerPrefix = "Scheduled";
+  } else if (p.includes("lead")) {
+    triggerPrefix = "Lead";
+  } else if (p.includes("ticket") || p.includes("support")) {
+    triggerPrefix = "Support Ticket";
+  } else if (p.includes("form") || plan?.triggerType === "webhook" || req.has("webhook")) {
+    triggerPrefix = "Webhook";
+  } else {
+    triggerPrefix = "Automated";
+  }
+
+  // 2. Determine Action / Subject Phrase
+  let actionPhrase = "";
+  if (p.includes("ai news") || (req.has("ai") && p.includes("news"))) {
+    actionPhrase = "AI News";
+  } else if (p.includes("qualify") || p.includes("qualification")) {
+    actionPhrase = "AI Lead Qualification";
+  } else if (p.includes("weather")) {
+    actionPhrase = "Weather Fetch";
+  } else if (p.includes("pr") || p.includes("pull request") || p.includes("github")) {
+    actionPhrase = "GitHub Review";
+  } else if (req.has("ai") && (p.includes("summarize") || p.includes("summary"))) {
+    actionPhrase = "AI Summary";
+  } else if (req.has("ai")) {
+    actionPhrase = "AI Processing";
+  } else if (req.has("http-request")) {
+    actionPhrase = "Data Fetch";
+  } else if (req.has("google-sheets")) {
+    actionPhrase = "Google Sheets Sync";
+  } else if (req.has("code")) {
+    actionPhrase = "Code Processing";
+  } else {
+    actionPhrase = "Workflow Task";
+  }
+
+  // 3. Determine Target / Destination Phrase
+  let targetPhrase = "";
+  if (req.has("telegram") || p.includes("telegram")) {
+    targetPhrase = "to Telegram";
+  } else if (req.has("slack") || p.includes("slack")) {
+    targetPhrase = "to Slack";
+  } else if (req.has("discord") || p.includes("discord")) {
+    targetPhrase = "to Discord";
+  } else if (req.has("email") || p.includes("email")) {
+    targetPhrase = "to Email";
+  } else if (req.has("google-sheets") && !actionPhrase.includes("Google Sheets")) {
+    targetPhrase = "to Google Sheets";
+  } else if (req.has("webhook-response")) {
+    targetPhrase = "Response";
+  }
+
+  if (triggerPrefix === "Lead" && actionPhrase.startsWith("AI Lead")) {
+    triggerPrefix = "";
+  }
+
+  const fullName = `${triggerPrefix} ${actionPhrase} ${targetPhrase}`.replace(/\s+/g, " ").trim();
+  return normalizeWorkflowName(fullName);
 }

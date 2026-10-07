@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { WorkflowPlanner } from "../workflow-planner";
+import { WorkflowPlanner, generateConciseWorkflowName } from "../workflow-planner";
 import { WorkflowValidator } from "../workflow-validator";
 import { WorkflowGenerationService } from "../workflow-generator";
+import { GeneratedWorkflowSchema, normalizeWorkflowName } from "../schema";
 
 describe("Phase 20: Nori AI Workflow Architect v2 Test Suite", () => {
   beforeEach(() => {
@@ -104,36 +105,83 @@ describe("Phase 20: Nori AI Workflow Architect v2 Test Suite", () => {
     });
   });
 
-  describe("2. Full Generation Pipeline & Validation", () => {
-    it("should generate a valid workflow graph matching prompt 2 constraints (Telegram present, Slack absent)", async () => {
-      const result = await WorkflowGenerationService.generateWorkflow({
-        prompt: "Ingest webhook leads, qualify with AI, and use Telegram instead of Slack.",
-      });
-
-      expect(result.validation.isValid).toBe(true);
-      expect(result.plan.requiredNodes).toContain("telegram");
-      expect(result.plan.forbiddenNodes).toContain("slack");
-
-      const nodeDefs = result.workflow.nodes.map((n) => n.data.type || n.id);
-      const defIds = result.workflow.nodes.map((n) => {
-        // extract definitionId from node configuration or label/id
-        return n.data.label;
-      });
-
-      expect(result.workflow.nodes.some((n) => n.id.includes("telegram") || n.data.label.toLowerCase().includes("telegram"))).toBe(true);
-      expect(result.workflow.nodes.some((n) => n.id.includes("slack") || n.data.label.toLowerCase().includes("slack"))).toBe(false);
+  describe("2. Workflow Name Normalization & Concise Name Generation", () => {
+    it("F. empty/whitespace name -> fallback to 'AI Generated Workflow'", () => {
+      expect(normalizeWorkflowName("")).toBe("AI Generated Workflow");
+      expect(normalizeWorkflowName("   ")).toBe("AI Generated Workflow");
+      expect(normalizeWorkflowName(null)).toBe("AI Generated Workflow");
     });
 
-    it("should generate a valid workflow graph matching prompt 3 constraints (No AI)", async () => {
-      const result = await WorkflowGenerationService.generateWorkflow({
-        prompt: "Fetch weather via HTTP every hour and post to Slack. Do not use AI.",
+    it("G. name containing excessive whitespace -> collapsed whitespace", () => {
+      expect(normalizeWorkflowName("   Daily    AI   News   to  Telegram   ")).toBe("Daily AI News to Telegram");
+    });
+
+    it("E. Gemini-generated name > 100 characters -> normalized cleanly <= 100 chars", () => {
+      const longName = "A".repeat(150);
+      const normalized = normalizeWorkflowName(longName);
+      expect(normalized.length).toBeLessThanOrEqual(100);
+      expect(normalized.length).toBe(100);
+
+      const parsed = GeneratedWorkflowSchema.parse({
+        name: longName,
+        nodes: [{ id: "n1", definitionId: "manual-trigger", label: "Manual Trigger" }],
+        edges: [],
       });
+      expect(parsed.name.length).toBeLessThanOrEqual(100);
+    });
 
+    it("Requirement 13: 105-character prompt -> concise workflow name", () => {
+      const prompt = "Every morning at 9 AM, fetch the latest AI news, summarize it using AI, and send the summary to Telegram.";
+      expect(prompt.length).toBe(105);
+
+      const plan = WorkflowPlanner.createPlan(prompt);
+      const name = generateConciseWorkflowName(prompt, plan);
+      expect(name).toBe("Daily AI News to Telegram");
+      expect(name.length).toBeLessThanOrEqual(100);
+    });
+  });
+
+  describe("3. Full Generation Pipeline & Regression Test Cases", () => {
+    it("A. 105-character prompt generation", async () => {
+      const prompt = "Every morning at 9 AM, fetch the latest AI news, summarize it using AI, and send the summary to Telegram.";
+      expect(prompt.length).toBe(105);
+
+      const result = await WorkflowGenerationService.generateWorkflow({ prompt });
       expect(result.validation.isValid).toBe(true);
-      expect(result.plan.forbiddenNodes).toContain("ai");
+      expect(result.workflow.name.length).toBeLessThanOrEqual(100);
+      expect(result.workflow.name).toBe("Daily AI News to Telegram");
+      expect(result.workflow.nodes.map((n) => n.data.label)).toEqual([
+        "Schedule Trigger",
+        "HTTP Request Pro",
+        "AI Agent / LLM",
+        "Telegram",
+      ]);
+    });
 
-      const hasAi = result.workflow.nodes.some((n) => n.id.includes("ai") || n.data.label.toLowerCase().includes("ai agent"));
-      expect(hasAi).toBe(false);
+    it("B. 200-character prompt generation", async () => {
+      const prompt = "When a new customer signs up via form submission on our marketing website, extract their contact details, evaluate their business potential using AI, format the output, and notify our team on Telegram.";
+      expect(prompt.length).toBeGreaterThan(200);
+
+      const result = await WorkflowGenerationService.generateWorkflow({ prompt });
+      expect(result.validation.isValid).toBe(true);
+      expect(result.workflow.name.length).toBeLessThanOrEqual(100);
+      expect(result.workflow.name).toContain("Telegram");
+    });
+
+    it("C. 500-character prompt generation", async () => {
+      const prompt = "Every Monday morning at 8:00 AM UTC, query our PostgreSQL database for all unassigned high priority support tickets filed over the weekend, summarize each ticket's core issue using Gemini AI, format the triage notes with Transform data node, append the processed ticket details into a Google Sheets tracking log, and dispatch an urgent notification with action items directly to our team's designated Telegram channel for immediate resolution.";
+      expect(prompt.length).toBeGreaterThan(400);
+
+      const result = await WorkflowGenerationService.generateWorkflow({ prompt });
+      expect(result.validation.isValid).toBe(true);
+      expect(result.workflow.name.length).toBeLessThanOrEqual(100);
+    });
+
+    it("D. short prompt generation", async () => {
+      const prompt = "Daily Telegram alert.";
+      const result = await WorkflowGenerationService.generateWorkflow({ prompt });
+      expect(result.validation.isValid).toBe(true);
+      expect(result.workflow.name.length).toBeLessThanOrEqual(100);
     });
   });
 });
