@@ -10,9 +10,17 @@ export const TelegramExecutor: NodeExecutor = {
     input: Record<string, unknown>,
     context: ExecutionContext,
   ): Promise<NodeExecutionResult> {
-    console.log("RUNTIME TELEGRAM CONFIG", node.data.config);
     const config = (node.data.config as Record<string, unknown>) ?? {};
     const contextData = buildExecutionExpressionContext(context, input);
+
+    // 1. Prevent duplicate dispatch if node already delivered in current execution run
+    const prevOutput = context.nodeOutputs[node.id] as Record<string, unknown> | undefined;
+    if (context.nodeStatuses[node.id] === "success" && prevOutput?.delivered) {
+      return {
+        status: "success",
+        output: prevOutput,
+      };
+    }
 
     const chatIdRaw =
       (config.chatId as string) ||
@@ -32,10 +40,46 @@ export const TelegramExecutor: NodeExecutor = {
     const photoUrlRaw = (config.photoUrl as string) || (input.photoUrl as string) || "";
 
     const chatId = resolveExpression(chatIdRaw, contextData);
-    let text = resolveExpression(textRaw, contextData);
-    if (!text || !text.trim()) {
-      text = "Neuraloop Workflow Notification";
+
+    // 2. Resolve expression with observable missing placeholders
+    const missingVars: string[] = [];
+    let text = resolveExpression(textRaw, contextData, {
+      observableMissing: true,
+      onMissing: (path) => missingVars.push(path),
+    });
+
+    // Check if upstream step payload is completely missing (e.g. AI failed or missing text)
+    const isUpstreamStepRef = textRaw.includes("steps.") || textRaw.includes("$steps.");
+    if (isUpstreamStepRef && missingVars.some((v) => v.includes("steps.") || v.includes("$steps."))) {
+      // Check if body content minus headers is completely missing
+      const contentOnly = text
+        .replace(/\[Missing:[^\]]+\]/g, "")
+        .replace(/\*.*?\*/g, "")
+        .trim();
+      if (!contentOnly) {
+        return {
+          status: "failed",
+          error: `TELEGRAM_MISSING_PAYLOAD: Upstream expression '${missingVars[0]}' was not available. Telegram dispatch aborted to prevent empty message.`,
+        };
+      }
     }
+
+    if (!text || !text.trim()) {
+      return {
+        status: "failed",
+        error: "TELEGRAM_EMPTY_MESSAGE: Message text is empty after expression resolution.",
+      };
+    }
+
+    // 3. Telegram 4096 character limit safeguard
+    const MAX_TELEGRAM_LENGTH = 4096;
+    let isTruncated = false;
+    if (text.length > MAX_TELEGRAM_LENGTH) {
+      const notice = "\n\n[Message truncated to 4096 chars for Telegram limit]";
+      text = text.slice(0, MAX_TELEGRAM_LENGTH - notice.length) + notice;
+      isTruncated = true;
+    }
+
     const photoUrl = resolveExpression(photoUrlRaw, contextData);
 
     if (!chatId) {
@@ -82,13 +126,31 @@ export const TelegramExecutor: NodeExecutor = {
         };
       }
 
-      const res = await fetch(endpoint, {
+      let res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      const responseData = await res.json();
+      let responseData = await res.json();
+
+      // 4. Markdown Entity Error Fallback:
+      // If Markdown parsing fails due to unescaped symbols in AI output, retry as clean plain text
+      if (
+        !res.ok &&
+        payload.parse_mode &&
+        (responseData.description?.includes("can't parse entities") ||
+          responseData.description?.includes("entity"))
+      ) {
+        delete payload.parse_mode;
+        res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        responseData = await res.json();
+      }
+
       if (!res.ok || !responseData.ok) {
         return {
           status: "failed",
@@ -103,6 +165,7 @@ export const TelegramExecutor: NodeExecutor = {
           messageId: responseData.result?.message_id,
           chatId,
           text,
+          isTruncated,
         },
       };
     } catch (err: unknown) {

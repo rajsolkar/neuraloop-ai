@@ -96,7 +96,8 @@ export function StarterGalleryView() {
 
   useEffect(() => {
     void fetchStarters();
-  }, [fetchStarters]);
+    void fetchWorkflows();
+  }, [fetchStarters, fetchWorkflows]);
 
   // Filter Starter Workflows
   const filteredStarters = useMemo(() => {

@@ -37,12 +37,6 @@ export async function POST(
       );
     }
 
-    if (!workflow.userId && userId && process.env.DATABASE_URL) {
-      await prisma.workflow.update({
-        where: { id: workflowId },
-        data: { userId },
-      }).catch(() => {});
-    }
 
     const telegramNode = workflow.nodes?.find((n) => n.data?.definitionId === "telegram");
     console.log("DB TELEGRAM CONFIG", telegramNode?.data?.config);

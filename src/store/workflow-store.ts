@@ -110,17 +110,23 @@ export const useWorkflowStore = create<WorkflowStoreState>((set, get) => ({
   fetchWorkflows: async () => {
     set({ loading: true, error: null });
     try {
-      let list: Workflow[] = [];
       if (typeof window !== "undefined") {
         const res = await fetch("/api/workflows");
         if (res.ok) {
           const data = await res.json();
-          list = data.workflows ?? [];
+          const userWorkflows: Workflow[] = Array.isArray(data.workflows) ? data.workflows : [];
+          set({ workflows: userWorkflows, hydrated: true, loading: false });
+          return userWorkflows;
+        }
+        if (res.status === 401) {
+          set({ workflows: [], hydrated: true, loading: false });
+          return [];
         }
       }
-      if (list.length === 0) {
-        list = await WorkflowService.listWorkflows();
-      }
+
+      // Offline / unit test fallback
+      const offlineList = await WorkflowService.listWorkflows("dev_local_user");
+      const list = offlineList.length > 0 ? offlineList : seedDefaultWorkflows();
       set({ workflows: list, hydrated: true, loading: false });
       return list;
     } catch (err) {

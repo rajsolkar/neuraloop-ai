@@ -22,9 +22,7 @@ export function TestExecutionDialog({ open, onOpenChange }: TestExecutionDialogP
   const editorNodes = useEditorStore((s) => s.nodes);
   const toast = useToastStore((s) => s.toast);
 
-  const [inputJson, setInputJson] = useState<string>(
-    JSON.stringify({ lead: { score: 95, name: "Raj" } }, null, 2),
-  );
+  const [inputJson, setInputJson] = useState<string>("{}");
   const [executing, setExecuting] = useState(false);
   const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null);
   const [executionResult, setExecutionResult] = useState<WorkflowExecutionRecord | null>(null);
@@ -42,6 +40,79 @@ export function TestExecutionDialog({ open, onOpenChange }: TestExecutionDialogP
   useEffect(() => {
     return () => stopPolling();
   }, []);
+
+  // Dynamically prefill relevant test input based on the workflow on canvas
+  useEffect(() => {
+    if (!open) return;
+
+    const triggerNode = editorNodes.find((n) => n.data?.category === "trigger");
+    const triggerConfig = (triggerNode?.data?.config as Record<string, unknown>) || {};
+    const defaultPayload = triggerConfig.defaultPayload as Record<string, unknown> | undefined;
+
+    if (defaultPayload && Object.keys(defaultPayload).length > 0) {
+      setInputJson(JSON.stringify(defaultPayload, null, 2));
+      return;
+    }
+
+    const serializedNodes = JSON.stringify(editorNodes);
+    if (serializedNodes.includes("customerQuery")) {
+      setInputJson(
+        JSON.stringify(
+          {
+            customerQuery: "My payment was deducted twice for order 12345",
+            chatId: "-1001234567890",
+          },
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+
+    if (serializedNodes.includes("alertType")) {
+      setInputJson(
+        JSON.stringify(
+          {
+            alertType: "Database Connection Pool Limit",
+            severity: "critical",
+            message: "High latency detected on primary DB instance",
+          },
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+
+    if (serializedNodes.includes("eventType")) {
+      setInputJson(
+        JSON.stringify(
+          {
+            eventType: "USER_SIGNUP",
+            message: "User alex@company.com joined workspace Beta-1",
+          },
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+
+    if (serializedNodes.includes("lead")) {
+      setInputJson(
+        JSON.stringify(
+          {
+            lead: { score: 95, name: "Raj" },
+          },
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+
+    setInputJson(JSON.stringify({}, null, 2));
+  }, [open, workflowId, editorNodes]);
 
   if (!open) return null;
 

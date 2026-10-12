@@ -1,6 +1,6 @@
 import type { WorkflowNode } from "@/types/workflow";
 import type { ExecutionContext, NodeExecutionResult, NodeExecutor } from "../types";
-import { resolveExpression, buildExecutionExpressionContext } from "../expression";
+import { resolveExpression, resolveValue, buildExecutionExpressionContext } from "../expression";
 import { CredentialService } from "@/lib/security/credential-service";
 import { exchangeServiceAccountToken } from "@/lib/security/service-account";
 
@@ -18,12 +18,12 @@ export const GoogleSheetsExecutor: NodeExecutor = {
     const sheetNameRaw = (config.sheetName as string) || (input.sheetName as string) || "Sheet1";
     const rangeRaw = (config.range as string) || (input.range as string) || "A1:Z100";
     const operation = (config.operation as string) || "read_rows";
-    const rowValuesRaw = (config.rowValues as string) || (input.rowValues as string) || "";
+    const rowValuesRaw = config.rowValues ?? input.rowValues ?? "";
 
     const spreadsheetId = resolveExpression(spreadsheetIdRaw, exprContext);
     const sheetName = resolveExpression(sheetNameRaw, exprContext);
     const range = resolveExpression(rangeRaw, exprContext);
-    const rowValues = resolveExpression(rowValuesRaw, exprContext);
+    const resolvedRowValues = resolveValue(rowValuesRaw, exprContext);
 
     if (!spreadsheetId || !spreadsheetId.trim()) {
       return {
@@ -142,8 +142,16 @@ export const GoogleSheetsExecutor: NodeExecutor = {
     try {
       if (operation === "append_row") {
         let valuesArray: unknown[] = [];
-        if (rowValues) {
-          const trimmed = rowValues.trim();
+        if (Array.isArray(resolvedRowValues)) {
+          if (resolvedRowValues.length === 1 && Array.isArray(resolvedRowValues[0])) {
+            valuesArray = resolvedRowValues[0];
+          } else {
+            valuesArray = resolvedRowValues;
+          }
+        } else if (resolvedRowValues && typeof resolvedRowValues === "object") {
+          valuesArray = Object.values(resolvedRowValues as Record<string, unknown>);
+        } else if (typeof resolvedRowValues === "string" && resolvedRowValues.trim()) {
+          const trimmed = resolvedRowValues.trim();
           if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
             try {
               valuesArray = JSON.parse(trimmed);
@@ -172,6 +180,8 @@ export const GoogleSheetsExecutor: NodeExecutor = {
 
         if (!Array.isArray(valuesArray)) {
           valuesArray = [valuesArray];
+        } else if (valuesArray.length === 1 && Array.isArray(valuesArray[0])) {
+          valuesArray = valuesArray[0];
         }
 
         let appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(sheetName)}:append?valueInputOption=USER_ENTERED`;

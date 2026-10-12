@@ -37,7 +37,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const workflow = await WorkflowService.updateWorkflow(id, body, userId);
+    const workflow = await WorkflowService.updateWorkflow(id, body, userId, orgId);
     return NextResponse.json({ workflow }, { status: 200 });
   } catch (error) {
     if (error instanceof ZodError) {

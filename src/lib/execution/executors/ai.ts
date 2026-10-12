@@ -1,6 +1,6 @@
 import type { WorkflowNode } from "@/types/workflow";
 import type { ExecutionContext, NodeExecutionResult, NodeExecutor } from "../types";
-import { buildExecutionExpressionContext, resolveExpression } from "../expression";
+import { buildExecutionExpressionContext, resolveExpression, resolvePropertyPath } from "../expression";
 import { CredentialService } from "@/lib/security/credential-service";
 import { WorkflowMemoryService } from "@/lib/ai/workflow-memory";
 
@@ -89,6 +89,33 @@ export const AIExecutor: NodeExecutor = {
       };
     }
 
+    // Required Customer Input Validation:
+    // If the prompt explicitly requires customer query input (e.g. Starter 03 Support Responder),
+    // ensure the input payload contains the query instead of silently generating a response to a blank prompt.
+    const referencesCustomerQuery =
+      rawPrompt.includes("customerQuery") ||
+      rawPrompt.includes("customer query") ||
+      rawPrompt.includes("user inquiry") ||
+      rawPrompt.includes("{{input.query}}") ||
+      rawPrompt.includes("{{query}}");
+
+    if (referencesCustomerQuery) {
+      const resolvedQuery =
+        (resolvePropertyPath(contextData, "input.customerQuery") as string) ||
+        (resolvePropertyPath(contextData, "customerQuery") as string) ||
+        (resolvePropertyPath(contextData, "$input.customerQuery") as string) ||
+        (resolvePropertyPath(contextData, "query") as string) ||
+        (resolvePropertyPath(contextData, "input.query") as string) ||
+        "";
+
+      if (!resolvedQuery || !String(resolvedQuery).trim()) {
+        return {
+          status: "failed",
+          error: "AI_REQUIRED_INPUT_MISSING: Customer query input ('customerQuery') is required but was not provided in the trigger payload.",
+        };
+      }
+    }
+
     let rawSystemPrompt = (config.systemPrompt as string) || "";
     if (responseType === "json" || mode === "planner") {
       rawSystemPrompt += "\nYou MUST return valid JSON format.";
@@ -106,6 +133,7 @@ export const AIExecutor: NodeExecutor = {
       let textOutput = "";
       let inputTokens: number | undefined;
       let outputTokens: number | undefined;
+      let finishReason: string | undefined;
 
       switch (cleanProvider) {
         case "claude": {
@@ -142,6 +170,7 @@ export const AIExecutor: NodeExecutor = {
           textOutput = data.content?.[0]?.text || "";
           inputTokens = data.usage?.input_tokens;
           outputTokens = data.usage?.output_tokens;
+          finishReason = data.stop_reason;
           break;
         }
 
@@ -178,6 +207,7 @@ export const AIExecutor: NodeExecutor = {
           textOutput = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
           inputTokens = data.usageMetadata?.promptTokenCount;
           outputTokens = data.usageMetadata?.candidatesTokenCount;
+          finishReason = data.candidates?.[0]?.finishReason;
           break;
         }
 
@@ -221,6 +251,7 @@ export const AIExecutor: NodeExecutor = {
           textOutput = data.choices[0]?.message?.content || "";
           inputTokens = data.usage?.prompt_tokens;
           outputTokens = data.usage?.completion_tokens;
+          finishReason = data.choices[0]?.finish_reason;
           break;
         }
       }
@@ -228,6 +259,11 @@ export const AIExecutor: NodeExecutor = {
       if (typeof textOutput !== "string") {
         return { status: "failed", error: "AI_MALFORMED_RESPONSE: AI output text is missing or invalid." };
       }
+
+      const isTruncated =
+        finishReason === "length" ||
+        finishReason === "MAX_TOKENS" ||
+        finishReason === "max_tokens";
 
       const tokensIn = inputTokens || Math.ceil((prompt.length + (systemPrompt?.length || 0)) / 4);
       const tokensOut = outputTokens || Math.ceil(textOutput.length / 4);
@@ -269,6 +305,8 @@ export const AIExecutor: NodeExecutor = {
         responseType,
         provider: cleanProvider,
         model,
+        finishReason: finishReason || "stop",
+        isTruncated,
         usage: {
           inputTokens: tokensIn,
           outputTokens: tokensOut,
@@ -289,6 +327,8 @@ export const AIExecutor: NodeExecutor = {
           tokensIn,
           tokensOut,
           cost,
+          finishReason: finishReason || "stop",
+          isTruncated,
         },
       };
     } catch (err: unknown) {

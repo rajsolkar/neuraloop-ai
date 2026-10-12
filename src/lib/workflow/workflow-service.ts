@@ -98,9 +98,13 @@ import { AuditLogService } from "@/lib/security/audit-log-service";
 
 export class WorkflowService {
   static async listWorkflows(userId?: string | null, orgId?: string | null): Promise<Workflow[]> {
+    if (!userId && !orgId) {
+      return [];
+    }
+
     if (isDatabaseConfigured()) {
       try {
-        let whereClause: Prisma.WorkflowWhereInput = {};
+        let whereClause: Prisma.WorkflowWhereInput;
         if (orgId) {
           whereClause = {
             organizationId: orgId,
@@ -110,7 +114,12 @@ export class WorkflowService {
             ],
           };
         } else if (userId) {
-          whereClause = { OR: [{ userId }, { userId: null }] };
+          whereClause = {
+            userId,
+            organizationId: null,
+          };
+        } else {
+          return [];
         }
 
         const records = await prisma.workflow.findMany({
@@ -153,10 +162,57 @@ export class WorkflowService {
       }
     }
 
-    seedInMemoryWorkflowsIfEmpty();
-    return Array.from(memoryWorkflows.values()).sort(
+    if (!userId && !orgId) {
+      return [];
+    }
+
+    const memoryList = Array.from(memoryWorkflows.values()).filter((w) => {
+      if (orgId) {
+        return w.organizationId === orgId && (w.visibility === "workspace" || w.userId === userId);
+      }
+      if (userId) {
+        return w.userId === userId && (!w.organizationId || w.organizationId === null);
+      }
+      return false;
+    });
+
+    return memoryList.sort(
       (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
     );
+  }
+
+  static async countWorkflows(userId?: string | null, orgId?: string | null): Promise<number> {
+    if (!userId && !orgId) {
+      return 0;
+    }
+
+    if (isDatabaseConfigured()) {
+      try {
+        let whereClause: Prisma.WorkflowWhereInput;
+        if (orgId) {
+          whereClause = {
+            organizationId: orgId,
+            OR: [
+              { visibility: "workspace" },
+              { userId: userId ?? undefined },
+            ],
+          };
+        } else if (userId) {
+          whereClause = {
+            userId,
+            organizationId: null,
+          };
+        } else {
+          return 0;
+        }
+
+        return await prisma.workflow.count({ where: whereClause });
+      } catch (err) {
+        console.warn("Database countWorkflows failed, falling back to memory store:", err);
+      }
+    }
+
+    return (await this.listWorkflows(userId, orgId)).length;
   }
 
   static async createWorkflow(
@@ -284,12 +340,31 @@ export class WorkflowService {
         });
 
         if (!record) return null;
-        if (orgId && record.organizationId === orgId) {
-          if (record.visibility === "private" && record.userId && record.userId !== userId) {
-            return null; // Enforce private workflow creator isolation
+
+        // Authorization checks
+        if (record.organizationId) {
+          // Organization workflow: caller must belong to the organization
+          if (record.organizationId !== orgId) {
+            return null;
           }
-        } else if (userId && record.userId && record.userId !== userId && !record.organizationId) {
-          return null; // Enforce strict tenant isolation
+          // Private within organization: only creator can view
+          if (record.visibility === "private" && record.userId && record.userId !== userId) {
+            return null;
+          }
+        } else {
+          // Personal workflow:
+          if (userId !== undefined) {
+            // When user context is provided, user must be the exact owner
+            if (!record.userId || record.userId !== userId) {
+              return null;
+            }
+          } else {
+            // Unauthenticated / no user context provided
+            // Private user workflows can NEVER be accessed without credentials
+            if (record.userId) {
+              return null;
+            }
+          }
         }
 
         const latestVersion = record.versions[0];
@@ -325,14 +400,30 @@ export class WorkflowService {
       }
     }
 
-    seedInMemoryWorkflowsIfEmpty();
     const workflow = memoryWorkflows.get(id);
     if (!workflow) return null;
-    return workflow;
+
+    if (workflow.organizationId) {
+      if (workflow.organizationId !== orgId) return null;
+      if (workflow.visibility === "private" && workflow.userId && workflow.userId !== userId) return null;
+      return workflow;
+    } else {
+      if (userId !== undefined) {
+        if (!workflow.userId || workflow.userId !== userId) return null;
+      } else {
+        if (workflow.userId) return null;
+      }
+      return workflow;
+    }
   }
 
-  static async updateWorkflow(id: string, rawInput: unknown, userId?: string | null): Promise<Workflow> {
-    const existing = await this.getWorkflow(id, userId);
+  static async updateWorkflow(
+    id: string,
+    rawInput: unknown,
+    userId?: string | null,
+    orgId?: string | null,
+  ): Promise<Workflow> {
+    const existing = await this.getWorkflow(id, userId, orgId);
     if (!existing) {
       throw new Error(`Workflow with ID ${id} not found.`);
     }
@@ -368,10 +459,6 @@ export class WorkflowService {
           updatedAt: now,
           savedAt: now,
         };
-
-        if (userId && !existing.userId) {
-          updateData.userId = userId;
-        }
 
         if (parsed.createVersion) {
           const latestVerRecord = await prisma.workflowVersion.findFirst({
@@ -472,8 +559,12 @@ export class WorkflowService {
     return updatedWorkflow;
   }
 
-  static async duplicateWorkflow(id: string, userId?: string | null): Promise<Workflow> {
-    const source = await this.getWorkflow(id, userId);
+  static async duplicateWorkflow(
+    id: string,
+    userId?: string | null,
+    orgId?: string | null,
+  ): Promise<Workflow> {
+    const source = await this.getWorkflow(id, userId, orgId);
     if (!source) {
       throw new Error(`Cannot duplicate missing workflow with ID ${id}`);
     }
@@ -501,6 +592,7 @@ export class WorkflowService {
         edges: sanitizeEdges(edges),
       },
       userId,
+      orgId,
     );
   }
 

@@ -5,14 +5,30 @@
 
 export function resolvePropertyPath(obj: unknown, path: string): unknown {
   if (obj === null || obj === undefined || !path) return undefined;
-  const parts = path.trim().split(".");
+  const cleanPath = path.trim().replace(/\[['"]?([^'"]+)['"]?\]/g, ".$1");
+  const parts = cleanPath.split(".").filter(Boolean);
   let current: unknown = obj;
 
   for (const part of parts) {
     if (current === null || current === undefined || typeof current !== "object") {
       return undefined;
     }
-    current = (current as Record<string, unknown>)[part];
+    const record = current as Record<string, unknown>;
+    if (part in record) {
+      current = record[part];
+    } else if (part.startsWith("$") && part.slice(1) in record) {
+      current = record[part.slice(1)];
+    } else if (`$${part}` in record) {
+      current = record[`$${part}`];
+    } else if (record.json && typeof record.json === "object" && part in (record.json as Record<string, unknown>)) {
+      current = (record.json as Record<string, unknown>)[part];
+    } else if (record.data && typeof record.data === "object" && part in (record.data as Record<string, unknown>)) {
+      current = (record.data as Record<string, unknown>)[part];
+    } else if (record.output && typeof record.output === "object" && part in (record.output as Record<string, unknown>)) {
+      current = (record.output as Record<string, unknown>)[part];
+    } else {
+      return undefined;
+    }
   }
   return current;
 }
@@ -29,6 +45,8 @@ export function resolveVariables(
     return template ?? "";
   }
 
+  const nowIso = new Date().toISOString();
+
   // Sample defaults for live preview fallback when values aren't populated
   const defaultSampleContext: Record<string, unknown> = {
     name: "Raj Solkar",
@@ -37,6 +55,10 @@ export function resolveVariables(
     budget: "$10,000",
     leadScore: 95,
     message: "Interested in automated workflow integration.",
+    timestamp: nowIso,
+    $timestamp: nowIso,
+    now: nowIso,
+    $now: nowIso,
     workflow: { id: "wf_prod_8820", name: "Lead Qualification Pipeline" },
     execution: { id: "exec_run_9941", status: "running" },
     loop: { item: { id: 101, name: "Task Item" }, currentIndex: 0, totalItems: 5 },
@@ -60,7 +82,7 @@ export function resolveVariables(
     ...payload,
   };
 
-  return template.replace(/\{\{\s*([\w\.\-]+)\s*\}\}/g, (_, rawPath: string) => {
+  return template.replace(/\{\{\s*([$\w\.\-\[\]'"]+)\s*\}\}/g, (_, rawPath: string) => {
     const path = rawPath.trim();
 
     // 1. Direct path lookup in context (e.g. "trigger.body.email" or "workflow.id")

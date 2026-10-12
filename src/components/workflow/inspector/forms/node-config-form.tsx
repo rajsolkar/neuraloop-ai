@@ -1649,7 +1649,12 @@ function GoogleSheetsForm({
   const sheetName = config.sheetName ?? "Sheet1";
   const range = config.range ?? "A1:Z100";
   const operation = config.operation ?? "read_rows";
-  const rowValues = config.rowValues ?? "";
+  const rowValues =
+    typeof config.rowValues === "string"
+      ? config.rowValues
+      : config.rowValues !== undefined
+      ? JSON.stringify(config.rowValues)
+      : "";
 
   return (
     <div className="flex flex-col gap-3.5">

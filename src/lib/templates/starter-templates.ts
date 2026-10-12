@@ -269,7 +269,12 @@ export const STARTER_TEMPLATES: StarterTemplateItem[] = [
             label: "Support Query Trigger",
             description: "Receives user inquiry payload",
             category: "trigger",
-            config: {},
+            config: {
+              defaultPayload: {
+                customerQuery: "How do I connect a custom domain to my account?",
+                chatId: "-1001234567890",
+              },
+            },
           },
         },
         {

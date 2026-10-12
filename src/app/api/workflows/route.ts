@@ -8,8 +8,11 @@ export async function GET() {
   if (errorResponse) return errorResponse;
 
   try {
-    const workflows = await WorkflowService.listWorkflows(userId, orgId);
-    return NextResponse.json({ workflows }, { status: 200 });
+    const [workflows, total] = await Promise.all([
+      WorkflowService.listWorkflows(userId, orgId),
+      WorkflowService.countWorkflows(userId, orgId),
+    ]);
+    return NextResponse.json({ workflows, total, count: total }, { status: 200 });
   } catch (error) {
     console.error("GET /api/workflows error:", error);
     return NextResponse.json(

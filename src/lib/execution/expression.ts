@@ -12,12 +12,21 @@ export function buildExecutionExpressionContext(
   for (const [nodeId, outputVal] of entries) {
     if (outputVal && typeof outputVal === "object" && !Array.isArray(outputVal)) {
       const obj = outputVal as Record<string, unknown>;
-      stepsMap[nodeId] = obj;
-      latestOutputObj = obj;
-      Object.assign(allOutputsObj, obj);
+      const jsonSub = (obj.json && typeof obj.json === "object" && !Array.isArray(obj.json))
+        ? (obj.json as Record<string, unknown>)
+        : {};
+      const mergedStep: Record<string, unknown> = {
+        ...jsonSub,
+        ...obj,
+        json: obj.json,
+        output: obj,
+      };
+      stepsMap[nodeId] = mergedStep;
+      latestOutputObj = mergedStep;
+      Object.assign(allOutputsObj, mergedStep);
     } else {
-      stepsMap[nodeId] = { value: outputVal };
-      latestOutputObj = { value: outputVal };
+      stepsMap[nodeId] = { value: outputVal, output: outputVal };
+      latestOutputObj = { value: outputVal, output: outputVal };
       allOutputsObj[nodeId] = outputVal;
     }
   }
@@ -40,48 +49,199 @@ export function buildExecutionExpressionContext(
     headers: (rootInput.headers as Record<string, unknown>) || {},
   };
 
+  const nowIso = new Date().toISOString();
+
   return {
     ...allOutputsObj,
     ...latestOutputObj,
     ...rootInput,
     input: rootInput,
+    $input: rootInput,
     trigger: triggerObj,
+    $trigger: triggerObj,
     latest: latestOutputObj,
     steps: stepsMap,
+    $steps: stepsMap,
+    timestamp: nowIso,
+    $timestamp: nowIso,
+    now: nowIso,
+    $now: nowIso,
     ...stepsMap,
   };
 }
 
 export function resolvePropertyPath(obj: unknown, path: string): unknown {
   if (obj === null || obj === undefined || !path) return undefined;
-  const parts = path.trim().split(".");
+  const cleanPath = path.trim().replace(/\[['"]?([^'"]+)['"]?\]/g, ".$1");
+  const parts = cleanPath.split(".").filter(Boolean);
   let current: unknown = obj;
 
   for (const part of parts) {
     if (current === null || current === undefined || typeof current !== "object") {
       return undefined;
     }
-    current = (current as Record<string, unknown>)[part];
+    const record = current as Record<string, unknown>;
+    if (part in record) {
+      current = record[part];
+    } else if (part.startsWith("$") && part.slice(1) in record) {
+      current = record[part.slice(1)];
+    } else if (`$${part}` in record) {
+      current = record[`$${part}`];
+    } else if (record.json && typeof record.json === "object" && part in (record.json as Record<string, unknown>)) {
+      current = (record.json as Record<string, unknown>)[part];
+    } else if (record.data && typeof record.data === "object" && part in (record.data as Record<string, unknown>)) {
+      current = (record.data as Record<string, unknown>)[part];
+    } else if (record.output && typeof record.output === "object" && part in (record.output as Record<string, unknown>)) {
+      current = (record.output as Record<string, unknown>)[part];
+    } else {
+      return undefined;
+    }
   }
   return current;
+}
+
+export interface ExpressionResolveOptions {
+  fallback?: string;
+  observableMissing?: boolean;
+  onMissing?: (path: string) => void;
 }
 
 export function resolveExpression(
   template: string,
   contextData: Record<string, unknown>,
+  options?: ExpressionResolveOptions,
 ): string {
   if (typeof template !== "string" || !template.includes("{{")) {
     return template;
   }
 
-  return template.replace(/\{\{\s*([\w\.\-]+)\s*\}\}/g, (_, path) => {
+  return template.replace(/\{\{\s*([$\w\.\-\[\]'"]+)\s*\}\}/g, (_, path) => {
     const val = resolvePropertyPath(contextData, path);
     if (val === undefined || val === null) {
-      return "";
+      if (options?.onMissing) {
+        options.onMissing(path);
+      }
+      if (options?.observableMissing) {
+        return `[Missing: ${path}]`;
+      }
+      return options?.fallback !== undefined ? options.fallback : "";
     }
     if (typeof val === "object") {
       return JSON.stringify(val);
     }
     return String(val);
   });
+}
+
+export function getMissingExpressionVariables(
+  template: string,
+  contextData: Record<string, unknown>,
+): string[] {
+  if (typeof template !== "string" || !template.includes("{{")) {
+    return [];
+  }
+  const missing: string[] = [];
+  const regex = /\{\{\s*([$\w\.\-\[\]'"]+)\s*\}\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(template)) !== null) {
+    const path = match[1];
+    const val = resolvePropertyPath(contextData, path);
+    if (val === undefined || val === null) {
+      missing.push(path);
+    }
+  }
+  return missing;
+}
+
+/**
+ * Universal Value Resolver:
+ * Recursively resolves expressions inside primitives, arrays, objects, and JSON templates.
+ * Preserves actual JavaScript types (number, boolean, array, object) where appropriate.
+ */
+export function resolveValue(
+  value: unknown,
+  contextData: Record<string, unknown>,
+): unknown {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  // 1. Array: recursively resolve each item
+  if (Array.isArray(value)) {
+    return value.map((item) => resolveValue(item, contextData));
+  }
+
+  // 2. Non-string primitives (number, boolean)
+  if (typeof value !== "string") {
+    if (typeof value === "object") {
+      const resolvedObj: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        resolvedObj[resolveExpression(k, contextData)] = resolveValue(v, contextData);
+      }
+      return resolvedObj;
+    }
+    return value;
+  }
+
+  const str = value.trim();
+
+  // 3. String without {{ expressions: check if it represents a JSON array or object
+  if (!str.includes("{{")) {
+    if ((str.startsWith("[") && str.endsWith("]")) || (str.startsWith("{") && str.endsWith("}"))) {
+      try {
+        return JSON.parse(str);
+      } catch {
+        try {
+          const relaxed = str.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, '"$1"');
+          return JSON.parse(relaxed);
+        } catch {
+          return value;
+        }
+      }
+    }
+    return value;
+  }
+
+  // 4. Exact single variable: e.g. "{{$steps.node.data.id}}" or "{{steps.node.data}}"
+  const exactMatch = str.match(/^\{\{\s*([$\w\.\-\[\]'"]+)\s*\}\}$/);
+  if (exactMatch) {
+    const resolved = resolvePropertyPath(contextData, exactMatch[1]);
+    if (resolved !== undefined) {
+      return resolved;
+    }
+    return "";
+  }
+
+  // 5. String is a JSON array or object template containing expressions
+  // e.g. '["{{$timestamp}}", "{{$steps.node-http-1.data.quote}}", "{{$steps.node-http-1.data.author}}"]'
+  if ((str.startsWith("[") && str.endsWith("]")) || (str.startsWith("{") && str.endsWith("}"))) {
+    try {
+      const parsedTemplate = JSON.parse(str);
+      return resolveValue(parsedTemplate, contextData);
+    } catch {
+      // Try relaxed single-quoted template e.g. ['{{$timestamp}}', '{{$steps.node.data.quote}}']
+      try {
+        const relaxedTemplate = str.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, '"$1"');
+        const parsedRelaxed = JSON.parse(relaxedTemplate);
+        return resolveValue(parsedRelaxed, contextData);
+      } catch {
+        // Fall back to resolving string expressions first
+      }
+
+      const interpolated = resolveExpression(str, contextData);
+      try {
+        return JSON.parse(interpolated);
+      } catch {
+        try {
+          const relaxedInterpolated = interpolated.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, '"$1"');
+          return JSON.parse(relaxedInterpolated);
+        } catch {
+          return interpolated;
+        }
+      }
+    }
+  }
+
+  // 6. Regular string interpolation
+  return resolveExpression(str, contextData);
 }

@@ -7,12 +7,12 @@ interface RouteParams {
 }
 
 export async function POST(_request: Request, { params }: RouteParams) {
-  const { userId, errorResponse } = await requireAuthUser();
+  const { userId, orgId, errorResponse } = await requireAuthUser();
   if (errorResponse) return errorResponse;
 
   try {
     const { id } = await params;
-    const copy = await WorkflowService.duplicateWorkflow(id, userId);
+    const copy = await WorkflowService.duplicateWorkflow(id, userId, orgId);
     return NextResponse.json({ workflow: copy }, { status: 201 });
   } catch (error) {
     if (error instanceof Error && error.message.includes("missing")) {

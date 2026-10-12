@@ -1,6 +1,6 @@
 import type { WorkflowNode } from "@/types/workflow";
 import type { ExecutionContext, NodeExecutionResult, NodeExecutor } from "../types";
-import { resolveExpression, resolvePropertyPath } from "../expression";
+import { resolveExpression, resolvePropertyPath, resolveValue, buildExecutionExpressionContext } from "../expression";
 
 /**
   * Modular Transform Operation Handlers
@@ -17,10 +17,10 @@ function handleFieldOperations(
 
   switch (op) {
     case "add_field": {
-      const rawKey = (config.key as string) || "fieldName";
+      const rawKey = (config.key as string) || (config.targetPath as string) || "fieldName";
       const key = resolveExpression(rawKey, contextData);
-      const rawVal = (config.value as string) ?? "";
-      const val = resolveExpression(rawVal, contextData);
+      const rawVal = config.value ?? config.expression ?? "";
+      const val = resolveValue(rawVal, contextData);
       obj[key] = val;
       return obj;
     }
@@ -62,12 +62,12 @@ function handleFieldOperations(
     }
 
     case "set_default_values": {
-      const defaults = (config.defaultValues as Array<{ key: string; value: string }>) || [];
+      const defaults = (config.defaultValues as Array<{ key: string; value: unknown }>) || [];
       for (const d of defaults) {
         if (!d.key) continue;
         const current = obj[d.key];
         if (current === undefined || current === null || current === "") {
-          obj[d.key] = resolveExpression(d.value, contextData);
+          obj[d.key] = resolveValue(d.value, contextData);
         }
       }
       return obj;
@@ -299,28 +299,7 @@ export const TransformExecutor: NodeExecutor = {
     const config = (node.data.config as Record<string, unknown>) ?? {};
     const operation = (config.operation as string) || "add_field";
 
-    const stepsMap: Record<string, unknown> = {};
-    for (const [nodeId, outputVal] of Object.entries(context.nodeOutputs ?? {})) {
-      if (typeof outputVal === "object" && outputVal !== null) {
-        stepsMap[nodeId] = {
-          ...(outputVal as Record<string, unknown>),
-          output: outputVal,
-        };
-      } else {
-        stepsMap[nodeId] = {
-          value: outputVal,
-          output: outputVal,
-        };
-      }
-    }
-
-    const contextData: Record<string, unknown> = {
-      input: context.input,
-      steps: stepsMap,
-      trigger: context.input,
-      ...stepsMap,
-      ...input,
-    };
+    const contextData = buildExecutionExpressionContext(context, input);
 
     let transformedResult: unknown;
 

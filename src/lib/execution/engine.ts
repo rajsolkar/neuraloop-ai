@@ -57,17 +57,19 @@ export class WorkflowEngine {
     userId?: string | null;
     input?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
+    workflow?: Workflow;
   }): Promise<WorkflowExecutionRecord> {
     const { workflowId, input = {}, metadata = {} } = options;
+    const isEphemeral = Boolean(options.workflow);
 
     // Load workflow & version
     let versionId = options.versionId;
     let versionNumber = 1;
-    let canonicalWorkflow: Workflow | null = null;
+    let canonicalWorkflow: Workflow | null = options.workflow || null;
     let ownerUserId: string | null = options.userId || null;
     let ownerOrgId: string | null = (options.metadata?.organizationId as string) || null;
 
-    if (isDatabaseConfigured()) {
+    if (!isEphemeral && isDatabaseConfigured()) {
       try {
         let dbVersion;
         if (versionId) {
@@ -136,7 +138,7 @@ export class WorkflowEngine {
       }
     }
 
-    if (isDatabaseConfigured() && (!versionId || versionId.startsWith("ver-fallback-"))) {
+    if (!isEphemeral && isDatabaseConfigured() && (!versionId || versionId.startsWith("ver-fallback-"))) {
       try {
         const dbVer = await prisma.workflowVersion.findFirst({
           where: { workflowId: canonicalWorkflow.id },
@@ -246,13 +248,29 @@ export class WorkflowEngine {
     };
 
     // Database record initialization (Reuse existing execution record or create)
-    if (isDatabaseConfigured()) {
+    if (!isEphemeral && isDatabaseConfigured()) {
       try {
         const existing = await prisma.workflowExecution.findUnique({
           where: { id: executionId },
         });
 
         if (existing) {
+          if (existing.status === "success") {
+            return {
+              id: existing.id,
+              workflowId: existing.workflowId,
+              workflowVersionId: existing.workflowVersionId,
+              versionNumber,
+              status: "success",
+              source: ((existing.triggerType as import("./types").ExecutionSource) || (options.metadata?.source as import("./types").ExecutionSource) || "manual"),
+              startedAt: existing.startedAt.toISOString(),
+              completedAt: existing.completedAt?.toISOString(),
+              duration: existing.duration || 0,
+              input: (existing.input as Record<string, unknown>) || {},
+              nodeExecutions: [],
+            };
+          }
+
           await prisma.workflowExecution.update({
             where: { id: executionId },
             data: {
@@ -309,26 +327,44 @@ export class WorkflowEngine {
       const nodeLabel = currentNode.data.label || currentNode.data.definitionId;
 
       if (skippedNodes.has(currentId)) {
-        context.nodeStatuses[currentId] = "skipped";
-        nodeExecutionRecords.push({
-          id: nodeExecId,
-          nodeId: currentId,
-          nodeType: currentNode.data.definitionId,
-          status: "skipped",
-          startedAt: nodeStartedAtIso,
-          completedAt: nodeStartedAtIso,
-          duration: 0,
-          attempt: 1,
+        // A node should not be skipped if it has an incoming edge from a node that ran successfully on a taken branch
+        const incomingEdges = edges.filter((e) => e.target === currentId);
+        const hasActiveIncoming = incomingEdges.some((edge) => {
+          const sourceStatus = context.nodeStatuses[edge.source];
+          if (sourceStatus !== "success") return false;
+          const sourceNode = nodes.find((n) => n.id === edge.source);
+          if (sourceNode?.data?.definitionId === "if") {
+            const ifOutput = context.nodeOutputs[edge.source] as Record<string, unknown> | undefined;
+            const ifBranch = String(ifOutput?.selectedBranch || "true");
+            return !edge.sourceHandle || edge.sourceHandle === ifBranch;
+          }
+          return true;
         });
 
-        const outgoing = edges.filter((e) => e.source === currentId);
-        for (const edge of outgoing) {
-          skippedNodes.add(edge.target);
-          if (!processedNodes.has(edge.target)) {
-            queue.push(edge.target);
+        if (!hasActiveIncoming) {
+          context.nodeStatuses[currentId] = "skipped";
+          nodeExecutionRecords.push({
+            id: nodeExecId,
+            nodeId: currentId,
+            nodeType: currentNode.data.definitionId,
+            status: "skipped",
+            startedAt: nodeStartedAtIso,
+            completedAt: nodeStartedAtIso,
+            duration: 0,
+            attempt: 1,
+          });
+
+          const outgoing = edges.filter((e) => e.source === currentId);
+          for (const edge of outgoing) {
+            skippedNodes.add(edge.target);
+            if (!processedNodes.has(edge.target) && !queue.includes(edge.target)) {
+              queue.push(edge.target);
+            }
           }
+          continue;
+        } else {
+          skippedNodes.delete(currentId);
         }
-        continue;
       }
 
       // Check if node has pre-cached output from partial replay
@@ -363,6 +399,18 @@ export class WorkflowEngine {
       const executor = getExecutor(currentNode.data.definitionId);
       context.nodeStatuses[currentId] = "running";
 
+      // Compute effective input for this node:
+      // Merge root execution input with incoming outputs from upstream parent nodes
+      const incomingEdges = edges.filter((e) => e.target === currentId);
+      let effectiveNodeInput: Record<string, unknown> = { ...input };
+      for (const edge of incomingEdges) {
+        const sourceOutput = context.nodeOutputs[edge.source];
+        if (sourceOutput && typeof sourceOutput === "object" && !Array.isArray(sourceOutput)) {
+          effectiveNodeInput = { ...(sourceOutput as Record<string, unknown>), ...effectiveNodeInput };
+        }
+      }
+      context.nodeInputs[currentId] = effectiveNodeInput;
+
       const nodeConfig = (currentNode.data.config as Record<string, unknown>) ?? {};
       const maxRetries = typeof nodeConfig.maxRetries === "number" ? nodeConfig.maxRetries : 1;
       const maxAttempts = 1 + maxRetries;
@@ -380,7 +428,7 @@ export class WorkflowEngine {
         }
 
         try {
-          result = await executor.execute(currentNode, input, context);
+          result = await executor.execute(currentNode, effectiveNodeInput, context);
         } catch (err: unknown) {
           result = {
             status: "failed",
@@ -465,7 +513,7 @@ export class WorkflowEngine {
             skippedNodes.add(edge.target);
           }
         }
-        if (!processedNodes.has(edge.target)) {
+        if (!processedNodes.has(edge.target) && !queue.includes(edge.target)) {
           queue.push(edge.target);
         }
       }
@@ -480,7 +528,7 @@ export class WorkflowEngine {
     const failedNodes = nodeExecutionRecords.filter((r) => r.status === "failed").length;
 
     // Persist NodeExecutions & update single WorkflowExecution in Neon PostgreSQL
-    if (isDatabaseConfigured()) {
+    if (!isEphemeral && isDatabaseConfigured()) {
       try {
         await prisma.nodeExecution.createMany({
           data: nodeExecutionRecords.map((r) => ({

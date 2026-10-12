@@ -19,10 +19,14 @@ export const IfExecutor: NodeExecutor = {
     let fieldPath = "";
     let operator = "equals";
     let targetValue = "";
+    let actualValue: unknown = undefined;
 
     if (mode === "advanced") {
       const expr = (condition.expression as string) || (config.expression as string) || "";
       const resolvedExpr = resolveVariables(expr, mergedData);
+      fieldPath = expr;
+      operator = "expression";
+      actualValue = resolvedExpr;
 
       // Safe expression evaluation for contains(), >, <, ==, !=, &&, ||, startsWith
       try {
@@ -58,7 +62,6 @@ export const IfExecutor: NodeExecutor = {
       const rawSecond = condition.secondValue ?? config.secondValue ?? "";
 
       // Resolve actual left operand value
-      let actualValue: unknown;
       if (fieldPath.includes("{{")) {
         actualValue = resolveVariables(fieldPath, mergedData);
       } else {
@@ -126,10 +129,22 @@ export const IfExecutor: NodeExecutor = {
           evaluatedResult = actualValue !== undefined && actualValue !== null && String(actualValue).trim() !== "";
           break;
         case "is_true":
-          evaluatedResult = String(actualValue).toLowerCase() === "true" || Boolean(actualValue) === true;
+          evaluatedResult =
+            actualValue !== undefined &&
+            actualValue !== null &&
+            (actualValue === true ||
+              String(actualValue).toLowerCase().trim() === "true" ||
+              actualValue === 1 ||
+              actualValue === "1");
           break;
         case "is_false":
-          evaluatedResult = String(actualValue).toLowerCase() === "false" || !actualValue;
+          evaluatedResult =
+            actualValue !== undefined &&
+            actualValue !== null &&
+            (actualValue === false ||
+              String(actualValue).toLowerCase().trim() === "false" ||
+              actualValue === 0 ||
+              actualValue === "0");
           break;
         default:
           evaluatedResult = false;
@@ -145,6 +160,7 @@ export const IfExecutor: NodeExecutor = {
         fieldPath,
         operator,
         targetValue,
+        actualValue: actualValue !== undefined ? actualValue : "N/A",
         selectedBranch: selectedHandle,
       },
       selectedHandle,

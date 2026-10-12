@@ -289,7 +289,7 @@ export const GoogleSheetsConfigSchema = z.object({
   sheetName: z.string().default("Sheet1"),
   range: z.string().default("A1:Z100"),
   operation: z.enum(["read_rows", "append_row"]).default("read_rows"),
-  rowValues: z.string().optional(),
+  rowValues: z.union([z.string(), z.array(z.unknown()), z.record(z.unknown())]).optional(),
 });
 export type GoogleSheetsConfig = z.infer<typeof GoogleSheetsConfigSchema>;
 
@@ -313,7 +313,8 @@ export type TransformOperation = z.infer<typeof TransformOperationSchema>;
 export const TransformConfigSchema = z.object({
   operation: TransformOperationSchema.default("add_field"),
   key: z.string().default("fieldName"),
-  value: z.string().default("sampleValue"),
+  value: z.union([z.string(), z.array(z.unknown()), z.record(z.unknown()), z.number(), z.boolean()]).default("sampleValue"),
+  expression: z.string().optional().default(""),
   targetPath: z.string().default(""),
   newKey: z.string().default(""),
   keepKeys: z.array(z.string()).default([]),

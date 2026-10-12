@@ -7,12 +7,12 @@ export async function GET(
   _request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  const { userId, errorResponse } = await requireAuthUser();
+  const { userId, orgId, errorResponse } = await requireAuthUser();
   if (errorResponse) return errorResponse;
 
   const { id: workflowId } = await context.params;
 
-  const workflow = await WorkflowService.getWorkflow(workflowId, userId);
+  const workflow = await WorkflowService.getWorkflow(workflowId, userId, orgId);
   if (!workflow) {
     return NextResponse.json(
       { error: `Workflow with ID ${workflowId} not found` },
