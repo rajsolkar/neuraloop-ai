@@ -111,6 +111,20 @@ export function TestExecutionDialog({ open, onOpenChange }: TestExecutionDialogP
       return;
     }
 
+    if (serializedNodes.includes("incidentReport")) {
+      setInputJson(
+        JSON.stringify(
+          {
+            incidentReport: "Payment gateway experiencing 45% timeout error rate on US-East checkout cluster.",
+            chatId: "-1001234567890",
+          },
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+
     setInputJson(JSON.stringify({}, null, 2));
   }, [open, workflowId, editorNodes]);
 

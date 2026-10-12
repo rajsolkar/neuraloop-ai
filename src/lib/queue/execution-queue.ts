@@ -103,11 +103,12 @@ export class ExecutionQueue {
     workflowId: string;
     workflowVersionId: string;
     userId?: string | null;
+    organizationId?: string | null;
     input?: Record<string, unknown>;
     source?: ExecutionSource;
     triggerMetadata?: Record<string, unknown>;
   }): Promise<{ id: string; status: string }> {
-    const { workflowId, workflowVersionId, userId, input = {}, source = "manual", triggerMetadata } = options;
+    const { workflowId, workflowVersionId, userId, organizationId, input = {}, source = "manual", triggerMetadata } = options;
 
     let executionId = `exec-${makeId("x")}`;
 
@@ -119,6 +120,7 @@ export class ExecutionQueue {
             workflowId,
             workflowVersionId,
             userId: userId ?? null,
+            organizationId: organizationId ?? (triggerMetadata?.organizationId as string | null) ?? null,
             status: "queued",
             source,
             input: input as unknown as import("@prisma/client").Prisma.InputJsonValue,
@@ -135,6 +137,8 @@ export class ExecutionQueue {
       executionId,
       workflowId,
       workflowVersionId,
+      userId: userId ?? null,
+      organizationId: organizationId ?? (triggerMetadata?.organizationId as string | null) ?? null,
       input,
       source,
       triggerMetadata,

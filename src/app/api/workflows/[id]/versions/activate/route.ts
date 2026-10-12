@@ -35,7 +35,7 @@ export async function POST(
       );
     }
 
-    const activatedWorkflow = await PublishService.setActiveVersion(workflowId, versionNumber);
+    const activatedWorkflow = await PublishService.setActiveVersion(workflowId, versionNumber, userId, orgId);
     return NextResponse.json(
       {
         message: `Version v${versionNumber} is now active and live for production execution`,

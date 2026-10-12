@@ -69,6 +69,8 @@ export async function POST(
       executionId: newExecutionId,
       workflowId: original.workflowId,
       workflowVersionId: original.workflowVersionId,
+      userId: original.userId,
+      organizationId: original.organizationId,
       input,
       metadata: {
         userId: original.userId,

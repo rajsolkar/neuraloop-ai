@@ -35,7 +35,7 @@ export async function POST(
       );
     }
 
-    const restoredWorkflow = await PublishService.restoreVersion(workflowId, versionNumber);
+    const restoredWorkflow = await PublishService.restoreVersion(workflowId, versionNumber, userId, orgId);
     return NextResponse.json(
       {
         message: `Restored version v${versionNumber} into new version v${restoredWorkflow.publishedVersionNumber}`,

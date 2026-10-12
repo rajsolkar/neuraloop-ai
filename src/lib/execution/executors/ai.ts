@@ -124,7 +124,13 @@ export const AIExecutor: NodeExecutor = {
 
     const model = (config.model as string) || (cleanProvider === "claude" ? "claude-3-5-sonnet-20241022" : cleanProvider === "gemini" ? "gemini-3.8-flash" : "gpt-4o-mini");
     const temperature = typeof config.temperature === "number" ? config.temperature : 0.7;
-    const maxTokens = typeof config.maxTokens === "number" ? config.maxTokens : 1000;
+    const rawMaxTokens = config.maxTokens ?? config.max_tokens ?? config.maxOutputTokens;
+    const maxTokens =
+      typeof rawMaxTokens === "number" && !isNaN(rawMaxTokens) && rawMaxTokens > 0
+        ? Math.floor(rawMaxTokens)
+        : typeof rawMaxTokens === "string" && !isNaN(parseInt(rawMaxTokens, 10)) && parseInt(rawMaxTokens, 10) > 0
+        ? parseInt(rawMaxTokens, 10)
+        : 1000;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout limit
@@ -177,24 +183,52 @@ export const AIExecutor: NodeExecutor = {
         case "gemini": {
           const cleanModel = model.replace(/^models\//, "").trim();
           const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${encodeURIComponent(secret)}`;
-          const res = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              ...(systemPrompt ? { systemInstruction: { parts: [{ text: systemPrompt }] } } : {}),
-              generationConfig: {
-                temperature,
-                maxOutputTokens: maxTokens,
-              },
-            }),
-            signal: controller.signal,
-          });
+
+          const makeGeminiRequest = async (tokenBudget: number, disableThinking: boolean) => {
+            const genConfig: Record<string, unknown> = {
+              temperature,
+              maxOutputTokens: tokenBudget,
+            };
+            if (responseType === "json" || mode === "planner") {
+              genConfig.responseMimeType = "application/json";
+              if (disableThinking) {
+                genConfig.thinkingConfig = { thinkingBudget: 0 };
+              }
+            }
+
+            const res = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                ...(systemPrompt ? { systemInstruction: { parts: [{ text: systemPrompt }] } } : {}),
+                generationConfig: genConfig,
+              }),
+              signal: controller.signal,
+            });
+
+            const data = await res.json();
+            return { res, data };
+          };
+
+          const parseCandidateText = (d: Record<string, unknown>) => {
+            const candidate = (d.candidates as Array<Record<string, unknown>>)?.[0];
+            const content = candidate?.content as Record<string, unknown> | undefined;
+            const parts = (content?.parts as Array<Record<string, unknown>>) || [];
+            const nonThoughtParts = parts.filter((p) => !p.thought);
+            return (nonThoughtParts.length > 0 ? nonThoughtParts : parts)
+              .map((p) => (typeof p.text === "string" ? p.text : ""))
+              .join("");
+          };
+
+          let { res, data } = await makeGeminiRequest(maxTokens, true);
 
           clearTimeout(timeoutId);
-          const data = await res.json();
           if (!res.ok) {
-            const errDetail = data.error?.message || `HTTP ${res.status}`;
+            const errDetail =
+              (data as Record<string, unknown>)?.error && typeof (data as Record<string, unknown>).error === "object"
+                ? ((data as Record<string, unknown>).error as Record<string, unknown>).message || `HTTP ${res.status}`
+                : `HTTP ${res.status}`;
             if (res.status === 401 || res.status === 403) {
               return { status: "failed", error: "AI_AUTH_ERROR: Invalid Gemini API key or unauthorized." };
             }
@@ -204,10 +238,55 @@ export const AIExecutor: NodeExecutor = {
             return { status: "failed", error: `AI_REQUEST_FAILED: Gemini API error (HTTP ${res.status}): ${errDetail}` };
           }
 
-          textOutput = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-          inputTokens = data.usageMetadata?.promptTokenCount;
-          outputTokens = data.usageMetadata?.candidatesTokenCount;
-          finishReason = data.candidates?.[0]?.finishReason;
+          textOutput = parseCandidateText(data);
+          let usageMeta = data.usageMetadata as Record<string, number> | undefined;
+          inputTokens = usageMeta?.promptTokenCount;
+          outputTokens = usageMeta?.candidatesTokenCount;
+          let candidate = (data.candidates as Array<Record<string, unknown>>)?.[0];
+          finishReason = candidate?.finishReason as string | undefined;
+
+          // Safe retry if response was truncated by MAX_TOKENS and JSON is incomplete
+          const isTruncatedAttempt = finishReason === "MAX_TOKENS" || finishReason === "max_tokens";
+          if (isTruncatedAttempt && (responseType === "json" || mode === "planner")) {
+            let initialParseValid = false;
+            try {
+              JSON.parse(textOutput.replace(/```json\n?|\n?```/g, "").trim());
+              initialParseValid = true;
+            } catch {
+              initialParseValid = false;
+            }
+
+            if (!initialParseValid) {
+              // Retry with elevated token ceiling (at least 2x, floor 2048) and thinking budget 0
+              const retryTokens = Math.max(maxTokens * 2, 2048);
+              try {
+                const retryResult = await makeGeminiRequest(retryTokens, true);
+                if (retryResult.res.ok) {
+                  const retryCandidate = (retryResult.data.candidates as Array<Record<string, unknown>>)?.[0];
+                  const retryText = parseCandidateText(retryResult.data);
+                  let retryParseValid = false;
+                  try {
+                    JSON.parse(retryText.replace(/```json\n?|\n?```/g, "").trim());
+                    retryParseValid = true;
+                  } catch {
+                    retryParseValid = false;
+                  }
+
+                  if (retryParseValid) {
+                    data = retryResult.data;
+                    textOutput = retryText;
+                    usageMeta = data.usageMetadata as Record<string, number> | undefined;
+                    inputTokens = usageMeta?.promptTokenCount ?? inputTokens;
+                    outputTokens = usageMeta?.candidatesTokenCount ?? outputTokens;
+                    candidate = retryCandidate;
+                    finishReason = (retryCandidate?.finishReason as string) || "STOP";
+                  }
+                }
+              } catch {
+                // Retry failed or timed out, retain initial response data for clear error reporting
+              }
+            }
+          }
           break;
         }
 
@@ -227,6 +306,9 @@ export const AIExecutor: NodeExecutor = {
               ],
               temperature,
               max_tokens: maxTokens,
+              ...(responseType === "json" || mode === "planner"
+                ? { response_format: { type: "json_object" } }
+                : {}),
             }),
             signal: controller.signal,
           });
@@ -289,18 +371,73 @@ export const AIExecutor: NodeExecutor = {
       );
 
       let parsedOutput: Record<string, unknown> | null = null;
+      let jsonParseError: string | null = null;
+
       if (responseType === "json" || mode === "planner") {
         try {
           const cleanedText = textOutput.replace(/```json\n?|\n?```/g, "").trim();
           parsedOutput = JSON.parse(cleanedText);
-        } catch {
-          parsedOutput = { rawText: textOutput, parseError: "Failed to parse JSON" };
+        } catch (err: unknown) {
+          jsonParseError = err instanceof Error ? err.message : "Failed to parse JSON";
+          parsedOutput = null;
+        }
+
+        if (parsedOutput === null) {
+          const errorMsg = isTruncated
+            ? `AI_JSON_TRUNCATED: Response was truncated by ${finishReason || "MAX_TOKENS"} and is incomplete JSON (${jsonParseError}). Raw output: "${textOutput}"`
+            : `AI_JSON_PARSE_FAILED: Failed to parse structured JSON response (${jsonParseError}). Raw output: "${textOutput}"`;
+
+          const failureOutputData = {
+            text: textOutput,
+            rawText: textOutput,
+            json: null,
+            mode,
+            responseType,
+            provider: cleanProvider,
+            model,
+            finishReason: finishReason || (isTruncated ? "MAX_TOKENS" : "stop"),
+            isTruncated,
+            usage: {
+              inputTokens: tokensIn,
+              outputTokens: tokensOut,
+              estimatedCost: cost,
+            },
+          };
+
+          return {
+            status: "failed",
+            error: errorMsg,
+            output: failureOutputData,
+            metrics: {
+              provider: cleanProvider,
+              model,
+              tokensIn,
+              tokensOut,
+              cost,
+              finishReason: finishReason || (isTruncated ? "MAX_TOKENS" : "stop"),
+              isTruncated,
+            },
+          };
+        }
+      }
+
+      if (parsedOutput && typeof parsedOutput === "object" && !Array.isArray(parsedOutput)) {
+        const jsonObj = parsedOutput as Record<string, unknown>;
+        if (jsonObj.severity === undefined || jsonObj.severity === null || jsonObj.severity === "") {
+          if (jsonObj.isUrgent !== undefined) {
+            jsonObj.severity = Boolean(jsonObj.isUrgent) ? "CRITICAL" : "LOW";
+          }
+        }
+        if (jsonObj.isUrgent === undefined && jsonObj.severity !== undefined) {
+          jsonObj.isUrgent = ["CRITICAL", "HIGH", "URGENT"].includes(String(jsonObj.severity).toUpperCase());
         }
       }
 
       const finalOutputData = {
         text: textOutput,
+        rawText: textOutput,
         json: parsedOutput,
+        ...(parsedOutput && typeof parsedOutput === "object" && !Array.isArray(parsedOutput) ? parsedOutput : {}),
         mode,
         responseType,
         provider: cleanProvider,

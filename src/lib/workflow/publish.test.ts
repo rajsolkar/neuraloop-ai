@@ -7,6 +7,8 @@ import { WorkflowStatusSchema } from "./validation";
 import type { WorkflowNode } from "@/types/workflow";
 
 import { computeVersionDiff } from "./version-diff";
+import { SchedulerService } from "@/lib/scheduler/scheduler-service";
+import { prisma } from "@/lib/prisma";
 
 describe("Phase 7 & 7.1 — Workflow Publishing, Control & Versioning Tests", () => {
   describe("1. Workflow Lifecycle Status Enum Validation", () => {
@@ -325,5 +327,78 @@ describe("Phase 7 & 7.1 — Workflow Publishing, Control & Versioning Tests", ()
       expect(response.status).toBe(405);
       expect(data.error).toContain("Use POST requests to trigger this webhook");
     });
+  });
+
+  describe("4. Regression Suite: Authenticated User Workflow Publishing & Schedule Registration (Daily AI Summary)", () => {
+    it("should publish user-owned workflow with schedule trigger in Asia/Kolkata creating v1 and v2 without Workflow not found error", async () => {
+      const userId = "user_daily_ai_tester";
+      const schedNode = createWorkflowNode("schedule", { x: 0, y: 0 });
+      schedNode.data.config = {
+        frequency: "daily",
+        time: "08:00",
+        timezone: "Asia/Kolkata",
+        cronExpression: "0 8 * * *",
+      };
+      const actionNode = createWorkflowNode("http-request", { x: 200, y: 0 });
+      actionNode.data.config = { url: "https://api.example.com/summary" };
+
+      const wf = await WorkflowService.createWorkflow(
+        {
+          name: "Daily AI Summary",
+          description: "Generates daily summary report in IST",
+          nodes: [schedNode, actionNode],
+          edges: [{ id: "e1", source: schedNode.id, target: actionNode.id }],
+        },
+        userId,
+      );
+
+      expect(wf.userId).toBe(userId);
+
+      // 1. Publish v1 - must succeed atomically without "Workflow not found"
+      const pub1 = await PublishService.publishWorkflow(
+        wf.id,
+        { activateImmediately: true },
+        userId,
+      );
+      expect(pub1.publishedVersionNumber).toBe(1);
+      expect(pub1.activeVersionNumber).toBe(1);
+      expect(pub1.status).toBe("published");
+
+      // Verify schedule was registered for Asia/Kolkata
+      const schedStatus1 = await SchedulerService.getScheduleStatus(wf.id);
+      if (process.env.DATABASE_URL) {
+        expect(schedStatus1).not.toBeNull();
+        expect(schedStatus1?.timezone).toBe("Asia/Kolkata");
+        expect(schedStatus1?.cronExpression).toBe("0 8 * * *");
+        expect(schedStatus1?.enabled).toBe(true);
+      }
+
+      // 2. Publish v2 - must succeed creating active v2
+      const pub2 = await PublishService.publishWorkflow(
+        wf.id,
+        { activateImmediately: true },
+        userId,
+      );
+      expect(pub2.publishedVersionNumber).toBe(2);
+      expect(pub2.activeVersionNumber).toBe(2);
+      expect(pub2.status).toBe("published");
+
+      // 3. Activating v1 sets active version and synchronizes schedule
+      const activatedV1 = await PublishService.setActiveVersion(wf.id, 1, userId);
+      expect(activatedV1.activeVersionNumber).toBe(1);
+      expect(activatedV1.name).toBe("Daily AI Summary");
+
+      // 4. Unauthorized caller must be rejected with Workflow not found
+      await expect(
+        PublishService.publishWorkflow(wf.id, {}, "unauthorized_stranger"),
+      ).rejects.toThrow(`Workflow with ID ${wf.id} not found.`);
+
+      // Cleanup
+      if (process.env.DATABASE_URL) {
+        await prisma.workflowSchedule.deleteMany({ where: { workflowId: wf.id } }).catch(() => {});
+        await prisma.workflowVersion.deleteMany({ where: { workflowId: wf.id } }).catch(() => {});
+        await prisma.workflow.delete({ where: { id: wf.id } }).catch(() => {});
+      }
+    }, 30000);
   });
 });

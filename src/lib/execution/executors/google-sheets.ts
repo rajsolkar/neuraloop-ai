@@ -141,6 +141,23 @@ export const GoogleSheetsExecutor: NodeExecutor = {
 
     try {
       if (operation === "append_row") {
+        const hasConfiguredRowValues = Boolean(
+          typeof config.rowValues === "string" ? config.rowValues.trim() : config.rowValues,
+        );
+
+        if (
+          hasConfiguredRowValues &&
+          (resolvedRowValues === "" ||
+            resolvedRowValues === null ||
+            resolvedRowValues === undefined ||
+            (Array.isArray(resolvedRowValues) && resolvedRowValues.length === 0))
+        ) {
+          return {
+            status: "failed",
+            error: "GOOGLE_SHEETS_EMPTY_ROW: Configured rowValues expression resolved to empty value.",
+          };
+        }
+
         let valuesArray: unknown[] = [];
         if (Array.isArray(resolvedRowValues)) {
           if (resolvedRowValues.length === 1 && Array.isArray(resolvedRowValues[0])) {
@@ -183,6 +200,37 @@ export const GoogleSheetsExecutor: NodeExecutor = {
         } else if (valuesArray.length === 1 && Array.isArray(valuesArray[0])) {
           valuesArray = valuesArray[0];
         }
+
+        const isIsoTimestamp = (val: unknown): boolean =>
+          typeof val === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(val.trim());
+
+        const nonTimestampNonEmptyValues = valuesArray.filter((v) => {
+          if (v === null || v === undefined) return false;
+          const s = String(v).trim();
+          if (!s) return false;
+          if (isIsoTimestamp(s)) return false;
+          return true;
+        });
+
+        const isRowEmpty =
+          valuesArray.length === 0 ||
+          valuesArray.every((v) => v === null || v === undefined || String(v).trim() === "") ||
+          (hasConfiguredRowValues && valuesArray.length > 1 && nonTimestampNonEmptyValues.length === 0);
+
+        if (isRowEmpty) {
+          console.warn(
+            `[GoogleSheetsExecutor] Rejected empty row: spreadsheetId=${spreadsheetId}, sheetName=${sheetName}, rowLength=${valuesArray.length}, nonTimestampCount=${nonTimestampNonEmptyValues.length}`,
+          );
+          return {
+            status: "failed",
+            error:
+              "GOOGLE_SHEETS_EMPTY_ROW: Row values contain only empty strings or timestamps with no payload data. Please verify expression mappings.",
+          };
+        }
+
+        console.log(
+          `[GoogleSheetsExecutor] append_row: spreadsheetId=${spreadsheetId}, sheetName=${sheetName}, rowLength=${valuesArray.length}, nonTimestampCount=${nonTimestampNonEmptyValues.length}, valueTypes=${JSON.stringify(valuesArray.map((v) => typeof v))}`,
+        );
 
         let appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(sheetName)}:append?valueInputOption=USER_ENTERED`;
         if (apiKey && !accessToken) {

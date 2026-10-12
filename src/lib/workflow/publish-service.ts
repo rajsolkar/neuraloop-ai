@@ -32,11 +32,15 @@ export class PublishService {
       edges?: WorkflowEdge[];
     } = { activateImmediately: true },
     userId?: string | null,
+    orgId?: string | null,
   ): Promise<Workflow> {
-    let workflow = await WorkflowService.getWorkflow(id, userId);
+    let workflow = await WorkflowService.getWorkflow(id, userId, orgId);
     if (!workflow) {
       throw new Error(`Workflow with ID ${id} not found.`);
     }
+
+    const ownerUserId = (userId && typeof userId === "string") ? userId : (workflow.userId || undefined);
+    const ownerOrgId = (orgId && typeof orgId === "string") ? orgId : (workflow.organizationId || undefined);
 
     if (options.nodes && options.nodes.length > 0) {
       workflow = {
@@ -50,7 +54,8 @@ export class PublishService {
           nodes: options.nodes,
           edges: options.edges ?? workflow.edges,
         },
-        userId,
+        ownerUserId,
+        ownerOrgId,
       );
     }
 
@@ -228,23 +233,35 @@ export class PublishService {
       inMemoryVersionsMap.set(id, existing);
     }
 
-    const updated = await WorkflowService.updateWorkflow(id, {
-      status: "published",
-      nodes: clean.nodes,
-      edges: clean.edges,
-    });
+    let updatedWorkflow: Workflow | null = null;
+    if (process.env.DATABASE_URL) {
+      updatedWorkflow = await WorkflowService.getWorkflow(id, ownerUserId, ownerOrgId);
+    } else {
+      updatedWorkflow = await WorkflowService.updateWorkflow(
+        id,
+        {
+          status: "published",
+          nodes: clean.nodes,
+          edges: clean.edges,
+        },
+        ownerUserId,
+        ownerOrgId,
+      );
+    }
 
-    // Sync database schedule trigger definitions
-    try {
-      await SchedulerService.syncWorkflowSchedule(id, userId, clean.nodes);
-    } catch (err) {
-      console.warn("Schedule sync warning on publish:", err);
+    // Sync database schedule trigger definitions if activating
+    if (shouldActivate) {
+      try {
+        await SchedulerService.syncWorkflowSchedule(id, ownerUserId, clean.nodes, ownerOrgId);
+      } catch (err) {
+        console.warn("Schedule sync warning on publish:", err);
+      }
     }
 
     const activeNum = shouldActivate ? nextVersionNumber : workflow.activeVersionNumber || nextVersionNumber;
 
     return {
-      ...updated,
+      ...(updatedWorkflow || workflow),
       status: "published",
       publishedAt: iso,
       publishedVersionId: versionId,
@@ -252,11 +269,26 @@ export class PublishService {
       activeVersionId: shouldActivate ? versionId : workflow.activeVersionId,
       activeVersionNumber: activeNum,
       webhookSecret: secret,
+      nodes: clean.nodes,
+      edges: clean.edges,
     };
   }
 
-  static async setActiveVersion(id: string, versionNumber: number): Promise<Workflow> {
-    const versions = await this.listVersions(id);
+  static async setActiveVersion(
+    id: string,
+    versionNumber: number,
+    userId?: string | null,
+    orgId?: string | null,
+  ): Promise<Workflow> {
+    const workflow = await WorkflowService.getWorkflow(id, userId, orgId);
+    if (!workflow) {
+      throw new Error(`Workflow with ID ${id} not found.`);
+    }
+
+    const ownerUserId = (userId && typeof userId === "string") ? userId : (workflow.userId || undefined);
+    const ownerOrgId = (orgId && typeof orgId === "string") ? orgId : (workflow.organizationId || undefined);
+
+    const versions = await this.listVersions(id, ownerUserId, ownerOrgId);
     const targetVer = versions.find((v) => v.version === versionNumber);
 
     if (!targetVer) {
@@ -291,16 +323,23 @@ export class PublishService {
       });
     }
 
-    const wf = await WorkflowService.getWorkflow(id);
+    // Sync database schedule trigger definitions for the newly activated version
+    try {
+      await SchedulerService.syncWorkflowSchedule(id, ownerUserId, targetVer.definition.nodes, ownerOrgId);
+    } catch (err) {
+      console.warn("Schedule sync warning on setActiveVersion:", err);
+    }
+
+    const wf = await WorkflowService.getWorkflow(id, ownerUserId, ownerOrgId);
     return {
-      ...(wf || {}),
+      ...(wf || workflow),
       id,
-      name: wf?.name || "",
-      description: wf?.description || "",
+      name: wf?.name || workflow.name,
+      description: wf?.description || workflow.description,
       status: "published",
-      createdAt: wf?.createdAt || new Date().toISOString(),
+      createdAt: wf?.createdAt || workflow.createdAt,
       updatedAt: new Date().toISOString(),
-      savedAt: wf?.savedAt || null,
+      savedAt: wf?.savedAt || workflow.savedAt,
       nodes: targetVer.definition.nodes,
       edges: targetVer.definition.edges,
       activeVersionId: targetVer.id,
@@ -310,8 +349,8 @@ export class PublishService {
     };
   }
 
-  static async rotateWebhookSecret(id: string, userId?: string | null): Promise<string> {
-    const existing = await WorkflowService.getWorkflow(id, userId);
+  static async rotateWebhookSecret(id: string, userId?: string | null, orgId?: string | null): Promise<string> {
+    const existing = await WorkflowService.getWorkflow(id, userId, orgId);
     if (!existing) {
       throw new Error(`Workflow with ID ${id} not found.`);
     }
@@ -328,7 +367,11 @@ export class PublishService {
     return newSecret;
   }
 
-  static async listVersions(id: string): Promise<WorkflowVersionRecord[]> {
+  static async listVersions(
+    id: string,
+    userId?: string | null,
+    orgId?: string | null,
+  ): Promise<WorkflowVersionRecord[]> {
     if (process.env.DATABASE_URL) {
       const dbVersions = await prisma.workflowVersion.findMany({
         where: { workflowId: id },
@@ -352,7 +395,7 @@ export class PublishService {
       return [...(inMemoryVersionsMap.get(id) || [])];
     }
 
-    const wf = await WorkflowService.getWorkflow(id);
+    const wf = await WorkflowService.getWorkflow(id, userId, orgId);
     if (!wf) return [];
     const dummy: WorkflowVersionRecord = {
       id: "ver-1",
@@ -378,8 +421,10 @@ export class PublishService {
     id: string,
     currentNodes: WorkflowNode[],
     currentEdges: WorkflowEdge[],
+    userId?: string | null,
+    orgId?: string | null,
   ): Promise<boolean> {
-    const versions = await this.listVersions(id);
+    const versions = await this.listVersions(id, userId, orgId);
     if (versions.length === 0) return false;
 
     // Use active or latest published version for comparison
@@ -394,8 +439,21 @@ export class PublishService {
     return diff.hasChanges;
   }
 
-  static async restoreVersion(id: string, targetVersionNumber: number): Promise<Workflow> {
-    const versions = await this.listVersions(id);
+  static async restoreVersion(
+    id: string,
+    targetVersionNumber: number,
+    userId?: string | null,
+    orgId?: string | null,
+  ): Promise<Workflow> {
+    const workflow = await WorkflowService.getWorkflow(id, userId, orgId);
+    if (!workflow) {
+      throw new Error(`Workflow with ID ${id} not found.`);
+    }
+
+    const ownerUserId = (userId && typeof userId === "string") ? userId : (workflow.userId || undefined);
+    const ownerOrgId = (orgId && typeof orgId === "string") ? orgId : (workflow.organizationId || undefined);
+
+    const versions = await this.listVersions(id, ownerUserId, ownerOrgId);
     const targetVersion = versions.find((v) => v.version === targetVersionNumber);
 
     if (!targetVersion) {
@@ -491,22 +549,41 @@ export class PublishService {
       inMemoryVersionsMap.set(id, versions);
     }
 
-    const updated = await WorkflowService.updateWorkflow(id, {
-      name: restoredDefinition.name,
-      description: restoredDefinition.description,
-      status: "published",
-      nodes: restoredDefinition.nodes,
-      edges: restoredDefinition.edges,
-    });
+    let updatedWorkflow: Workflow | null = null;
+    if (process.env.DATABASE_URL) {
+      updatedWorkflow = await WorkflowService.getWorkflow(id, ownerUserId, ownerOrgId);
+    } else {
+      updatedWorkflow = await WorkflowService.updateWorkflow(
+        id,
+        {
+          name: restoredDefinition.name,
+          description: restoredDefinition.description,
+          status: "published",
+          nodes: restoredDefinition.nodes,
+          edges: restoredDefinition.edges,
+        },
+        ownerUserId,
+        ownerOrgId,
+      );
+    }
+
+    // Sync schedule for restored version
+    try {
+      await SchedulerService.syncWorkflowSchedule(id, ownerUserId, restoredDefinition.nodes, ownerOrgId);
+    } catch (err) {
+      console.warn("Schedule sync warning on restoreVersion:", err);
+    }
 
     return {
-      ...updated,
+      ...(updatedWorkflow || workflow),
       status: "published",
       publishedVersionId: newVersionId,
       publishedVersionNumber: newVersionNumber,
       activeVersionId: newVersionId,
       activeVersionNumber: newVersionNumber,
       publishedAt: iso,
+      nodes: restoredDefinition.nodes,
+      edges: restoredDefinition.edges,
     };
   }
 }

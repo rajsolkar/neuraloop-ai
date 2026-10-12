@@ -233,19 +233,7 @@ export class WorkflowEngine {
       nodeTypesMap[n.id] = n.data.definitionId;
     }
 
-    const context: ExecutionContext = {
-      executionId,
-      workflowId: canonicalWorkflow.id,
-      workflowVersionId: versionId!,
-      versionNumber,
-      userId: ownerUserId,
-      organizationId: ownerOrgId,
-      input,
-      nodeOutputs: {},
-      nodeInputs: {},
-      nodeStatuses: {},
-      metadata: { ...metadata, nodeTypes: nodeTypesMap },
-    };
+    let effectiveRootInput: Record<string, unknown> = (input && Object.keys(input).length > 0) ? { ...input } : {};
 
     // Database record initialization (Reuse existing execution record or create)
     if (!isEphemeral && isDatabaseConfigured()) {
@@ -271,16 +259,44 @@ export class WorkflowEngine {
             };
           }
 
+          // Recover input from existing DB record if not provided in options
+          if (Object.keys(effectiveRootInput).length === 0 && existing.input && typeof existing.input === "object" && !Array.isArray(existing.input)) {
+            const dbIn = existing.input as Record<string, unknown>;
+            if (Object.keys(dbIn).length > 0) {
+              effectiveRootInput = { ...dbIn };
+            }
+          }
+
+          // Fallback to trigger defaultPayload if still empty
+          if (Object.keys(effectiveRootInput).length === 0) {
+            const trig = nodes.find((n) => n.data?.category === "trigger");
+            const trigConf = (trig?.data?.config as Record<string, unknown>) || {};
+            const defPay = (trigConf.defaultPayload as Record<string, unknown>) || {};
+            if (Object.keys(defPay).length > 0) {
+              effectiveRootInput = { ...defPay };
+            }
+          }
+
           await prisma.workflowExecution.update({
             where: { id: executionId },
             data: {
               status: "running",
               startedAt: new Date(startTime),
-              input: input as unknown as Prisma.InputJsonValue,
+              input: effectiveRootInput as unknown as Prisma.InputJsonValue,
               metadata: metadata as unknown as Prisma.InputJsonValue,
             },
           });
         } else {
+          // If fresh execution, check trigger defaultPayload if input is empty
+          if (Object.keys(effectiveRootInput).length === 0) {
+            const trig = nodes.find((n) => n.data?.category === "trigger");
+            const trigConf = (trig?.data?.config as Record<string, unknown>) || {};
+            const defPay = (trigConf.defaultPayload as Record<string, unknown>) || {};
+            if (Object.keys(defPay).length > 0) {
+              effectiveRootInput = { ...defPay };
+            }
+          }
+
           await prisma.workflowExecution.create({
             data: {
               id: executionId,
@@ -288,7 +304,7 @@ export class WorkflowEngine {
               workflowVersionId: versionId!,
               status: "running",
               startedAt: new Date(startTime),
-              input: input as unknown as Prisma.InputJsonValue,
+              input: effectiveRootInput as unknown as Prisma.InputJsonValue,
               metadata: metadata as unknown as Prisma.InputJsonValue,
             },
           });
@@ -296,7 +312,31 @@ export class WorkflowEngine {
       } catch (err) {
         console.warn("Failed to initialize WorkflowExecution in DB:", err);
       }
+    } else {
+      // In-memory or ephemeral: fallback to trigger defaultPayload if input is empty
+      if (Object.keys(effectiveRootInput).length === 0) {
+        const trig = nodes.find((n) => n.data?.category === "trigger");
+        const trigConf = (trig?.data?.config as Record<string, unknown>) || {};
+        const defPay = (trigConf.defaultPayload as Record<string, unknown>) || {};
+        if (Object.keys(defPay).length > 0) {
+          effectiveRootInput = { ...defPay };
+        }
+      }
     }
+
+    const context: ExecutionContext = {
+      executionId,
+      workflowId: canonicalWorkflow.id,
+      workflowVersionId: versionId!,
+      versionNumber,
+      userId: ownerUserId,
+      organizationId: ownerOrgId,
+      input: effectiveRootInput,
+      nodeOutputs: {},
+      nodeInputs: {},
+      nodeStatuses: {},
+      metadata: { ...metadata, nodeTypes: nodeTypesMap },
+    };
 
     const nodeExecutionRecords: WorkflowExecutionRecord["nodeExecutions"] = [];
     let overallStatus: ExecutionStatus = "success";
@@ -402,11 +442,11 @@ export class WorkflowEngine {
       // Compute effective input for this node:
       // Merge root execution input with incoming outputs from upstream parent nodes
       const incomingEdges = edges.filter((e) => e.target === currentId);
-      let effectiveNodeInput: Record<string, unknown> = { ...input };
+      let effectiveNodeInput: Record<string, unknown> = { ...effectiveRootInput };
       for (const edge of incomingEdges) {
         const sourceOutput = context.nodeOutputs[edge.source];
         if (sourceOutput && typeof sourceOutput === "object" && !Array.isArray(sourceOutput)) {
-          effectiveNodeInput = { ...(sourceOutput as Record<string, unknown>), ...effectiveNodeInput };
+          effectiveNodeInput = { ...effectiveNodeInput, ...(sourceOutput as Record<string, unknown>) };
         }
       }
       context.nodeInputs[currentId] = effectiveNodeInput;
@@ -583,7 +623,7 @@ export class WorkflowEngine {
       startedAt: startedAtIso,
       completedAt: completedAtIso,
       duration: totalDuration,
-      input,
+      input: effectiveRootInput,
       output: context.nodeOutputs,
       error: overallError,
       nodeExecutions: nodeExecutionRecords,

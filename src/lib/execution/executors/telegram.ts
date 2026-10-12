@@ -48,20 +48,21 @@ export const TelegramExecutor: NodeExecutor = {
       onMissing: (path) => missingVars.push(path),
     });
 
-    // Check if upstream step payload is completely missing (e.g. AI failed or missing text)
+    // Check if required upstream step payload is missing (e.g. AI failed or returned incomplete JSON)
     const isUpstreamStepRef = textRaw.includes("steps.") || textRaw.includes("$steps.");
     if (isUpstreamStepRef && missingVars.some((v) => v.includes("steps.") || v.includes("$steps."))) {
-      // Check if body content minus headers is completely missing
-      const contentOnly = text
-        .replace(/\[Missing:[^\]]+\]/g, "")
-        .replace(/\*.*?\*/g, "")
-        .trim();
-      if (!contentOnly) {
-        return {
-          status: "failed",
-          error: `TELEGRAM_MISSING_PAYLOAD: Upstream expression '${missingVars[0]}' was not available. Telegram dispatch aborted to prevent empty message.`,
-        };
-      }
+      const missingStepVars = missingVars.filter((v) => v.includes("steps.") || v.includes("$steps."));
+      return {
+        status: "failed",
+        error: `TELEGRAM_MISSING_PAYLOAD: Required upstream step output '${missingStepVars.join(", ")}' was not available. Telegram dispatch aborted to prevent sending unresolved placeholders.`,
+      };
+    }
+
+    if (text.includes("[Missing: steps.") || text.includes("[Missing: $steps.")) {
+      return {
+        status: "failed",
+        error: "TELEGRAM_MISSING_PAYLOAD: Message text contains unresolved upstream step placeholders. Dispatch aborted.",
+      };
     }
 
     if (!text || !text.trim()) {

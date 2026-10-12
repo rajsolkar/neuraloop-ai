@@ -29,6 +29,7 @@ export class SchedulerService {
     workflowId: string,
     userId: string | null | undefined,
     nodes: WorkflowNode[],
+    orgId?: string | null,
   ): Promise<void> {
     if (!process.env.DATABASE_URL) return;
 
@@ -76,6 +77,7 @@ export class SchedulerService {
           where: { id: existing.id },
           data: {
             userId: ownerUserId,
+            organizationId: orgId ?? existing.organizationId ?? null,
             enabled: true,
             cronExpression,
             timezone,
@@ -88,6 +90,7 @@ export class SchedulerService {
           data: {
             workflowId,
             userId: ownerUserId,
+            organizationId: orgId ?? null,
             enabled: true,
             cronExpression,
             timezone,
@@ -136,9 +139,12 @@ export class SchedulerService {
             select: {
               id: true,
               userId: true,
+              organizationId: true,
               status: true,
               publishedVersionId: true,
               publishedVersionNumber: true,
+              activeVersionId: true,
+              activeVersionNumber: true,
             },
           },
         },
@@ -150,11 +156,13 @@ export class SchedulerService {
 
       for (const sched of dueSchedules) {
         try {
+          const activeVersionId = sched.workflow?.activeVersionId || sched.workflow?.publishedVersionId;
+
           // Check if workflow is actively published
           if (
             !sched.workflow ||
             sched.workflow.status !== "published" ||
-            !sched.workflow.publishedVersionId
+            !activeVersionId
           ) {
             // Disable or skip un-published workflow schedule
             skippedCount++;
@@ -169,8 +177,9 @@ export class SchedulerService {
             continue;
           }
 
-          const versionId = sched.workflow.publishedVersionId;
+          const versionId = activeVersionId;
           const ownerUserId = sched.userId || sched.workflow.userId || "user_system";
+          const ownerOrgId = sched.organizationId || sched.workflow.organizationId || null;
           const deduplicationId = `sched-${sched.id}-${sched.nextRunAt.getTime()}`;
 
           // Enqueue scheduled execution into BullMQ / ExecutionQueue with deduplication metadata
@@ -178,6 +187,7 @@ export class SchedulerService {
             workflowId: sched.workflowId,
             workflowVersionId: versionId,
             userId: ownerUserId,
+            organizationId: ownerOrgId,
             source: "schedule",
             input: {
               trigger: "schedule",
@@ -191,6 +201,7 @@ export class SchedulerService {
               cronExpression: sched.cronExpression,
               timezone: sched.timezone,
               deduplicationId,
+              organizationId: ownerOrgId,
             },
           });
 

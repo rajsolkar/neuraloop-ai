@@ -42,15 +42,47 @@ export async function POST(
     console.log("DB TELEGRAM CONFIG", telegramNode?.data?.config);
 
     let body: Record<string, unknown> = {};
-    try {
-      body = (await request.json()) as Record<string, unknown>;
-    } catch {
-      body = {};
+    const rawText = await request.text();
+    if (rawText.trim()) {
+      try {
+        body = JSON.parse(rawText) as Record<string, unknown>;
+      } catch {
+        return NextResponse.json(
+          { error: "INVALID_JSON_PAYLOAD: The request body contains invalid JSON syntax." },
+          { status: 400 },
+        );
+      }
     }
 
-    const versionIdInput = body.versionId as string | undefined;
-    const input = (body.input as Record<string, unknown>) || {};
-    const metadata = (body.metadata as Record<string, unknown>) || {};
+    const versionIdInput = typeof body.versionId === "string" ? body.versionId : undefined;
+    const metadata = (body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata))
+      ? (body.metadata as Record<string, unknown>)
+      : {};
+
+    // Canonical execution-input extraction: support body.input, body.payload, body.data, or top-level fields
+    let input: Record<string, unknown> = {};
+    if (body.input && typeof body.input === "object" && !Array.isArray(body.input)) {
+      input = body.input as Record<string, unknown>;
+    } else if (body.payload && typeof body.payload === "object" && !Array.isArray(body.payload)) {
+      input = body.payload as Record<string, unknown>;
+    } else if (body.data && typeof body.data === "object" && !Array.isArray(body.data)) {
+      input = body.data as Record<string, unknown>;
+    } else {
+      const { versionId: _v, metadata: _m, ...rest } = body;
+      if (Object.keys(rest).length > 0) {
+        input = rest;
+      }
+    }
+
+    // Fallback to trigger defaultPayload if input is empty
+    if (Object.keys(input).length === 0) {
+      const triggerNode = workflow.nodes?.find((n) => n.data?.category === "trigger");
+      const triggerConfig = (triggerNode?.data?.config as Record<string, unknown>) || {};
+      const defaultPayload = (triggerConfig.defaultPayload as Record<string, unknown>) || {};
+      if (Object.keys(defaultPayload).length > 0) {
+        input = { ...defaultPayload };
+      }
+    }
 
     let versionId = versionIdInput;
     let versionNumber = 1;

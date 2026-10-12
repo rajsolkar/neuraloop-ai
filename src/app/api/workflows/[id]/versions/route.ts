@@ -20,7 +20,7 @@ export async function GET(
   }
 
   try {
-    const versions = await PublishService.listVersions(workflowId);
+    const versions = await PublishService.listVersions(workflowId, userId, orgId);
     return NextResponse.json({ versions }, { status: 200 });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

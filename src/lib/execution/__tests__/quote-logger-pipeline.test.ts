@@ -629,4 +629,139 @@ describe("Starter 06: API-to-Sheets Quote Logger Pipeline Test Suite", () => {
       expect(typeof resolved.meta.timestamp).toBe("string");
     });
   });
+
+  describe("4. Regression Suite: Quote Logger Variable Interpolation & Empty Row Rejection", () => {
+    it("fails with GOOGLE_SHEETS_EMPTY_ROW when quote and author resolve to empty strings with only timestamp", async () => {
+      const sheetsExecutor = getExecutor("google-sheets")!;
+      const sheetsNode = createWorkflowNode("google-sheets", { x: 0, y: 0 });
+      sheetsNode.data.config = {
+        spreadsheetId: "test-sheet-id",
+        sheetName: "Sheet1",
+        operation: "append_row",
+        rowValues: '["{{$steps.nonexistent.quote}}", "{{$steps.nonexistent.author}}", "{{$timestamp}}"]',
+      };
+
+      const ctx = createPipelineContext();
+      const result = await sheetsExecutor.execute(sheetsNode, {}, ctx);
+
+      expect(result.status).toBe("failed");
+      expect(result.error).toContain("GOOGLE_SHEETS_EMPTY_ROW");
+      expect(result.error).toContain("Row values contain only empty strings or timestamps");
+    });
+
+    it("fails with GOOGLE_SHEETS_EMPTY_ROW when configured rowValues expression resolves to empty string", async () => {
+      const sheetsExecutor = getExecutor("google-sheets")!;
+      const sheetsNode = createWorkflowNode("google-sheets", { x: 0, y: 0 });
+      sheetsNode.data.config = {
+        spreadsheetId: "test-sheet-id",
+        sheetName: "Sheet1",
+        operation: "append_row",
+        rowValues: "{{$steps.node-transform-missing.formattedRow}}",
+      };
+
+      const ctx = createPipelineContext();
+      const result = await sheetsExecutor.execute(sheetsNode, {}, ctx);
+
+      expect(result.status).toBe("failed");
+      expect(result.error).toContain("GOOGLE_SHEETS_EMPTY_ROW");
+    });
+
+    it("resolves steps.node-http-1.quote and quote directly because dataSub is unpacked", () => {
+      const ctx = createPipelineContext();
+      const exprCtx = buildExecutionExpressionContext(ctx);
+
+      // Direct access without .data prefix
+      expect(resolveValue("{{$steps.node-http-1.quote}}", exprCtx)).toBe("Float like a butterfly, sting like a bee.");
+      expect(resolveValue("{{steps.node-http-1.author}}", exprCtx)).toBe("Muhammad Ali");
+      expect(resolveValue("{{quote}}", exprCtx)).toBe("Float like a butterfly, sting like a bee.");
+      expect(resolveValue("{{author}}", exprCtx)).toBe("Muhammad Ali");
+    });
+
+    it("resolves steps.node-transform-1.result.data.quote when Transform output nests result.data", () => {
+      const ctx = createPipelineContext({
+        nodeOutputs: {
+          "node-transform-1": {
+            operation: "add_field",
+            result: {
+              data: {
+                quote: "Simplicity is the ultimate sophistication.",
+                author: "Leonardo da Vinci",
+              },
+            },
+          },
+        },
+      });
+      const exprCtx = buildExecutionExpressionContext(ctx);
+
+      expect(resolveValue("{{steps.node-transform-1.result.data.quote}}", exprCtx)).toBe("Simplicity is the ultimate sophistication.");
+      expect(resolveValue("{{$steps.node-transform-1.result.data.author}}", exprCtx)).toBe("Leonardo da Vinci");
+      // Also works with unpacked shortcuts
+      expect(resolveValue("{{steps.node-transform-1.quote}}", exprCtx)).toBe("Simplicity is the ultimate sophistication.");
+    });
+
+    it("end-to-end full row verification asserts Google Sheets receives valid quote, author, and timestamp", async () => {
+      let appendedValues: unknown[][] = [];
+      globalThis.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        if (url.includes("sheets.googleapis.com")) {
+          const body = JSON.parse(init?.body as string);
+          appendedValues = body.values || [];
+          return new Response(
+            JSON.stringify({
+              updates: { updatedRange: "Sheet1!A2:C2", updatedRows: 1, updatedCells: 3 },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response(JSON.stringify({ error: "not found" }), { status: 404 });
+      });
+
+      // 1. Transform executes with real HTTP output in context
+      const transformExecutor = getExecutor("transform")!;
+      const transformNode = createWorkflowNode("transform", { x: 680, y: 160 });
+      transformNode.id = "node-transform-1";
+      transformNode.data.config = {
+        operation: "add_field",
+        key: "formattedRow",
+        value: '["{{$timestamp}}", "{{$steps.node-http-1.data.quote}}", "{{$steps.node-http-1.data.author}}"]',
+      };
+
+      const pipelineCtx = createPipelineContext();
+      // Simulate root input having an empty data field (test run trigger payload)
+      const transformInput = { data: {} };
+      const transformRes = await transformExecutor.execute(transformNode, transformInput, pipelineCtx);
+      expect(transformRes.status).toBe("success");
+
+      // 2. Pass transform output to Sheets node
+      pipelineCtx.nodeOutputs["node-transform-1"] = transformRes.output as Record<string, unknown>;
+      pipelineCtx.nodeStatuses["node-transform-1"] = "success";
+
+      const sheetsExecutor = getExecutor("google-sheets")!;
+      const sheetsNode = createWorkflowNode("google-sheets", { x: 980, y: 160 });
+      sheetsNode.data.config = {
+        spreadsheetId: "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+        sheetName: "Sheet1",
+        operation: "append_row",
+        rowValues: "{{steps.node-transform-1.formattedRow}}",
+      };
+
+      const sheetsRes = await sheetsExecutor.execute(sheetsNode, {}, pipelineCtx);
+      expect(sheetsRes.status).toBe("success");
+      expect(sheetsRes.output?.appended).toBe(true);
+
+      // 3. Verify appended row contains API quote, author, and ISO timestamp
+      expect(appendedValues).toHaveLength(1);
+      const row = appendedValues[0];
+      expect(row).toHaveLength(3);
+
+      // Column 0: Timestamp
+      expect(typeof row[0]).toBe("string");
+      expect(row[0]).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+
+      // Column 1: Quote (non-empty, exactly from HTTP node)
+      expect(row[1]).toBe("Float like a butterfly, sting like a bee.");
+
+      // Column 2: Author (non-empty, exactly from HTTP node)
+      expect(row[2]).toBe("Muhammad Ali");
+    });
+  });
 });

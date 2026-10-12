@@ -34,6 +34,21 @@ export function createExecutionWorker(): Worker<ExecutionJobPayload> | null {
         }
       }
 
+      let jobInput = input;
+      if ((!jobInput || Object.keys(jobInput).length === 0) && process.env.DATABASE_URL) {
+        try {
+          const dbExec = await prisma.workflowExecution.findUnique({
+            where: { id: executionId },
+            select: { input: true },
+          });
+          if (dbExec?.input && typeof dbExec.input === "object" && !Array.isArray(dbExec.input)) {
+            jobInput = dbExec.input as Record<string, unknown>;
+          }
+        } catch (err) {
+          console.warn(`[Worker] Failed to recover input from DB for ${executionId}:`, err);
+        }
+      }
+
       // 2. Reuse existing Phase 4 WorkflowEngine with exact executionId
       try {
         const executionRecord = await WorkflowEngine.executeWorkflow({
@@ -41,7 +56,7 @@ export function createExecutionWorker(): Worker<ExecutionJobPayload> | null {
           versionId: workflowVersionId,
           executionId,
           userId: userId || (metadata?.userId as string) || null,
-          input,
+          input: jobInput,
           metadata: {
             ...(metadata || {}),
             organizationId: organizationId || (metadata?.organizationId as string) || null,

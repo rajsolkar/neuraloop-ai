@@ -15,12 +15,36 @@ export function buildExecutionExpressionContext(
       const jsonSub = (obj.json && typeof obj.json === "object" && !Array.isArray(obj.json))
         ? (obj.json as Record<string, unknown>)
         : {};
+      const dataSub = (obj.data && typeof obj.data === "object" && !Array.isArray(obj.data))
+        ? (obj.data as Record<string, unknown>)
+        : {};
+      const resultSub = (obj.result && typeof obj.result === "object" && !Array.isArray(obj.result))
+        ? (obj.result as Record<string, unknown>)
+        : {};
+      const resultDataSub = (resultSub.data && typeof resultSub.data === "object" && !Array.isArray(resultSub.data))
+        ? (resultSub.data as Record<string, unknown>)
+        : {};
+
       const mergedStep: Record<string, unknown> = {
+        ...resultDataSub,
+        ...resultSub,
+        ...dataSub,
         ...jsonSub,
         ...obj,
         json: obj.json,
+        data: obj.data,
+        result: obj.result,
         output: obj,
       };
+
+      // Guarantee severity property if isUrgent exists on step output
+      if (mergedStep.severity === undefined && mergedStep.isUrgent !== undefined) {
+        mergedStep.severity = Boolean(mergedStep.isUrgent) ? "CRITICAL" : "LOW";
+        if (mergedStep.json && typeof mergedStep.json === "object") {
+          (mergedStep.json as Record<string, unknown>).severity = mergedStep.severity;
+        }
+      }
+
       stepsMap[nodeId] = mergedStep;
       latestOutputObj = mergedStep;
       Object.assign(allOutputsObj, mergedStep);
@@ -40,9 +64,28 @@ export function buildExecutionExpressionContext(
     }
   }
 
-  const rootInput = context.input && Object.keys(context.input).length > 0 ? context.input : input;
+  // Collect trigger node output to ensure root input and trigger expressions always resolve
+  let triggerNodeOutput: Record<string, unknown> = {};
+  if (context.metadata?.nodeTypes && typeof context.metadata.nodeTypes === "object") {
+    const nodeTypes = context.metadata.nodeTypes as Record<string, string>;
+    for (const [nodeId, defId] of Object.entries(nodeTypes)) {
+      if (["manual-trigger", "webhook", "schedule"].includes(defId)) {
+        const out = context.nodeOutputs?.[nodeId];
+        if (out && typeof out === "object" && !Array.isArray(out)) {
+          triggerNodeOutput = { ...triggerNodeOutput, ...(out as Record<string, unknown>) };
+        }
+      }
+    }
+  }
+
+  const rootInput = {
+    ...triggerNodeOutput,
+    ...input,
+    ...(context.input && Object.keys(context.input).length > 0 ? context.input : {}),
+  };
 
   const triggerObj = {
+    ...triggerNodeOutput,
     ...rootInput,
     body: (rootInput.body as Record<string, unknown>) || rootInput,
     query: (rootInput.query as Record<string, unknown>) || {},
@@ -91,6 +134,16 @@ export function resolvePropertyPath(obj: unknown, path: string): unknown {
       current = (record.json as Record<string, unknown>)[part];
     } else if (record.data && typeof record.data === "object" && part in (record.data as Record<string, unknown>)) {
       current = (record.data as Record<string, unknown>)[part];
+    } else if (record.result && typeof record.result === "object" && part in (record.result as Record<string, unknown>)) {
+      current = (record.result as Record<string, unknown>)[part];
+    } else if (
+      record.result &&
+      typeof record.result === "object" &&
+      (record.result as Record<string, unknown>).data &&
+      typeof (record.result as Record<string, unknown>).data === "object" &&
+      part in ((record.result as Record<string, unknown>).data as Record<string, unknown>)
+    ) {
+      current = ((record.result as Record<string, unknown>).data as Record<string, unknown>)[part];
     } else if (record.output && typeof record.output === "object" && part in (record.output as Record<string, unknown>)) {
       current = (record.output as Record<string, unknown>)[part];
     } else {
