@@ -26,6 +26,7 @@ const PROVIDERS = [
   { value: "slack", label: "Slack Bot Token" },
   { value: "telegram-bot-token", label: "Telegram Bot Token" },
   { value: "discord-webhook", label: "Discord Webhook" },
+  { value: "google-sheets-service-account", label: "Google Sheets / Service Account" },
   { value: "google-sheets", label: "Google Sheets / API Key" },
   { value: "smtp", label: "Email / SMTP Server" },
   { value: "custom", label: "Custom API Key / Header" },
@@ -80,6 +81,27 @@ export function CreateCredentialDialog({
       return;
     }
 
+    if (provider === "google-sheets-service-account" && value.trim()) {
+      try {
+        const parsed = JSON.parse(value.trim());
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          setError("Service account JSON must be a valid JSON object.");
+          return;
+        }
+        if (!parsed.client_email || typeof parsed.client_email !== "string" || !parsed.client_email.includes("@")) {
+          setError("Service account JSON must contain a valid 'client_email'.");
+          return;
+        }
+        if (!parsed.private_key || typeof parsed.private_key !== "string" || !parsed.private_key.includes("PRIVATE KEY")) {
+          setError("Service account JSON must contain a valid PEM 'private_key'.");
+          return;
+        }
+      } catch {
+        setError("Invalid JSON format. Please paste the complete Google Cloud Service Account JSON key file.");
+        return;
+      }
+    }
+
     setTesting(true);
     setTestResult(null);
     setError(null);
@@ -124,8 +146,33 @@ export function CreateCredentialDialog({
       return;
     }
     if (!value.trim() && !credentialToEdit) {
-      setError("Secret API key or token is required.");
+      setError(
+        provider === "google-sheets-service-account"
+          ? "Service account JSON key is required."
+          : "Secret API key or token is required."
+      );
       return;
+    }
+
+    if (provider === "google-sheets-service-account" && value.trim()) {
+      try {
+        const parsed = JSON.parse(value.trim());
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          setError("Service account JSON must be a valid JSON object.");
+          return;
+        }
+        if (!parsed.client_email || typeof parsed.client_email !== "string" || !parsed.client_email.includes("@")) {
+          setError("Service account JSON must contain a valid 'client_email'.");
+          return;
+        }
+        if (!parsed.private_key || typeof parsed.private_key !== "string" || !parsed.private_key.includes("PRIVATE KEY")) {
+          setError("Service account JSON must contain a valid PEM 'private_key'.");
+          return;
+        }
+      } catch {
+        setError("Invalid JSON format. Please paste the complete Google Cloud Service Account JSON key file.");
+        return;
+      }
     }
 
     setSaving(true);
@@ -260,29 +307,52 @@ export function CreateCredentialDialog({
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-medium">
-                {provider === "smtp" ? "SMTP Password / App Password" : "Secret API Key / Token"}
+                {provider === "smtp"
+                  ? "SMTP Password / App Password"
+                  : provider === "google-sheets-service-account"
+                  ? "Service Account JSON Key"
+                  : "Secret API Key / Token"}
               </Label>
               {credentialToEdit && (
                 <span className="text-[11px] text-ink-faint">Leave blank to keep existing secret</span>
               )}
             </div>
-            <div className="relative flex items-center">
-              <Input
-                type={showSecret ? "text" : "password"}
-                placeholder={credentialToEdit ? "••••••••••••••••" : "sk-..."}
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                className="pr-9 font-mono text-xs"
-              />
-              <button
-                type="button"
-                onClick={() => setShowSecret(!showSecret)}
-                className="absolute right-2.5 text-ink-faint hover:text-ink"
-                aria-label={showSecret ? "Hide secret" : "Show secret"}
-              >
-                {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
+            {provider === "google-sheets-service-account" ? (
+              <div className="space-y-1">
+                <textarea
+                  placeholder={
+                    credentialToEdit
+                      ? "Leave blank to keep existing secret, or paste new service account JSON here..."
+                      : `{\n  "type": "service_account",\n  "project_id": "your-project-id",\n  "private_key_id": "...",\n  "private_key": "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n",\n  "client_email": "name@your-project-id.iam.gserviceaccount.com",\n  "client_id": "...",\n  "auth_uri": "https://accounts.google.com/o/oauth2/auth",\n  "token_uri": "https://oauth2.googleapis.com/token"\n}`
+                  }
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  rows={6}
+                  className="w-full rounded-md border border-border bg-canvas px-2.5 py-2 font-mono text-xs text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 placeholder:text-ink-faint"
+                />
+                <p className="text-[11px] text-ink-faint">
+                  Paste the entire JSON key file downloaded from Google Cloud IAM & Admin &gt; Service Accounts &gt; Keys.
+                </p>
+              </div>
+            ) : (
+              <div className="relative flex items-center">
+                <Input
+                  type={showSecret ? "text" : "password"}
+                  placeholder={credentialToEdit ? "••••••••••••••••" : "sk-..."}
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  className="pr-9 font-mono text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSecret(!showSecret)}
+                  className="absolute right-2.5 text-ink-faint hover:text-ink"
+                  aria-label={showSecret ? "Hide secret" : "Show secret"}
+                >
+                  {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            )}
           </div>
 
           {testResult && (

@@ -65,6 +65,7 @@ export class WorkflowEngine {
     let versionNumber = 1;
     let canonicalWorkflow: Workflow | null = null;
     let ownerUserId: string | null = options.userId || null;
+    let ownerOrgId: string | null = (options.metadata?.organizationId as string) || null;
 
     if (isDatabaseConfigured()) {
       try {
@@ -86,6 +87,7 @@ export class WorkflowEngine {
           versionId = dbVersion.id;
           versionNumber = dbVersion.version;
           ownerUserId = dbVersion.workflow.userId || ownerUserId;
+          ownerOrgId = dbVersion.workflow.organizationId || ownerOrgId;
           const def = dbVersion.definition as unknown as Record<string, unknown>;
           canonicalWorkflow = {
             id: dbVersion.workflowId,
@@ -212,6 +214,7 @@ export class WorkflowEngine {
       workflowVersionId: versionId!,
       versionNumber,
       userId: ownerUserId,
+      organizationId: ownerOrgId,
       input,
       nodeOutputs: {},
       nodeInputs: {},

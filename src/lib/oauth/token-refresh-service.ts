@@ -33,7 +33,11 @@ export class TokenRefreshService {
     const targetCredentialId = oauthConn ? oauthConn.credentialId : connectionOrCredentialId;
 
     // 2. Fetch & Decrypt secret payload from Vault
-    const resolvedCred = await CredentialService.getDecryptedCredential(targetCredentialId, userId);
+    const resolvedCred = await CredentialService.getDecryptedCredential(
+      targetCredentialId,
+      userId || oauthConn?.userId,
+      oauthConn?.organizationId,
+    );
     if (!resolvedCred || !resolvedCred.secret) {
       throw new Error(`OAUTH_CREDENTIAL_NOT_FOUND: Could not load Vault credential '${targetCredentialId}'.`);
     }

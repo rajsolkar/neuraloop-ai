@@ -29,7 +29,11 @@ export const HttpRequestExecutor: NodeExecutor = {
     const credentialId = (config.credentialId as string) || "";
     if (credentialId) {
       try {
-        const resolved = await CredentialService.getDecryptedCredential(credentialId, context.userId);
+        const resolved = await CredentialService.getDecryptedCredential(
+          credentialId,
+          context.userId,
+          context.organizationId,
+        );
         if (resolved?.secret) {
           credentialData = { secret: resolved.secret, apiKey: resolved.secret };
         }

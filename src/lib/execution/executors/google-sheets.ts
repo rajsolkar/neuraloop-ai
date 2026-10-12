@@ -1,7 +1,8 @@
 import type { WorkflowNode } from "@/types/workflow";
 import type { ExecutionContext, NodeExecutionResult, NodeExecutor } from "../types";
-import { resolveExpression } from "../expression";
+import { resolveExpression, buildExecutionExpressionContext } from "../expression";
 import { CredentialService } from "@/lib/security/credential-service";
+import { exchangeServiceAccountToken } from "@/lib/security/service-account";
 
 export const GoogleSheetsExecutor: NodeExecutor = {
   definitionId: "google-sheets",
@@ -10,6 +11,8 @@ export const GoogleSheetsExecutor: NodeExecutor = {
     input: Record<string, unknown>,
     context: ExecutionContext,
   ): Promise<NodeExecutionResult> {
+    const exprContext = buildExecutionExpressionContext(context, input);
+
     const config = (node.data.config as Record<string, unknown>) ?? {};
     const spreadsheetIdRaw = (config.spreadsheetId as string) || (input.spreadsheetId as string) || "";
     const sheetNameRaw = (config.sheetName as string) || (input.sheetName as string) || "Sheet1";
@@ -17,58 +20,168 @@ export const GoogleSheetsExecutor: NodeExecutor = {
     const operation = (config.operation as string) || "read_rows";
     const rowValuesRaw = (config.rowValues as string) || (input.rowValues as string) || "";
 
-    const spreadsheetId = resolveExpression(spreadsheetIdRaw, { ...input, ...context.nodeOutputs });
-    const sheetName = resolveExpression(sheetNameRaw, { ...input, ...context.nodeOutputs });
-    const range = resolveExpression(rangeRaw, { ...input, ...context.nodeOutputs });
-    const rowValues = resolveExpression(rowValuesRaw, { ...input, ...context.nodeOutputs });
+    const spreadsheetId = resolveExpression(spreadsheetIdRaw, exprContext);
+    const sheetName = resolveExpression(sheetNameRaw, exprContext);
+    const range = resolveExpression(rangeRaw, exprContext);
+    const rowValues = resolveExpression(rowValuesRaw, exprContext);
 
-    if (!spreadsheetId) {
+    if (!spreadsheetId || !spreadsheetId.trim()) {
       return {
         status: "failed",
         error: "GOOGLE_SHEETS_MISSING_PARAM: 'spreadsheetId' is required in node configuration.",
       };
     }
 
-    let apiKeyOrToken = process.env.GOOGLE_API_KEY || process.env.GOOGLE_SHEETS_TOKEN || "";
-    if (config.credentialId) {
-      const resolved = await CredentialService.getDecryptedCredential(config.credentialId as string, context.userId);
-      if (resolved?.secret) {
-        apiKeyOrToken = resolved.secret;
+    let secretStr = "";
+    let credProvider = "";
+    const credentialId = (config.credentialId as string) || (input.credentialId as string) || "";
+    if (credentialId) {
+      try {
+        const resolved = await CredentialService.getDecryptedCredential(
+          credentialId,
+          context.userId,
+          context.organizationId,
+        );
+        if (resolved?.secret) {
+          secretStr = resolved.secret.trim();
+          credProvider = (resolved.provider || "").toLowerCase().trim();
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          status: "failed",
+          error: `GOOGLE_SHEETS_REQUEST_FAILED: Credential retrieval failed - ${msg}`,
+        };
       }
     }
 
-    if (!apiKeyOrToken || !apiKeyOrToken.trim()) {
+    if (!secretStr) {
+      secretStr = (process.env.GOOGLE_SHEETS_TOKEN || process.env.GOOGLE_API_KEY || "").trim();
+    }
+
+    if (!secretStr) {
       return {
         status: "failed",
-        error: "GOOGLE_SHEETS_CREDENTIAL_NOT_CONFIGURED: Google Sheets API key or access token is missing. Please select a credential.",
+        error: "GOOGLE_SHEETS_CREDENTIAL_NOT_CONFIGURED: Google Sheets API key or access token is missing. Please select a valid credential.",
       };
+    }
+
+    // Determine authentication mode (API Key vs Bearer Access Token vs Service Account)
+    let apiKey: string | null = null;
+    let accessToken: string | null = null;
+    let isServiceAccount =
+      credProvider === "google-sheets-service-account" ||
+      credProvider === "google-service-account";
+    let serviceAccountAuthError: string | null = null;
+
+    if (secretStr.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(secretStr);
+        if (parsed.access_token || parsed.accessToken) {
+          accessToken = (parsed.access_token || parsed.accessToken) as string;
+        }
+        if (parsed.api_key || parsed.apiKey) {
+          apiKey = (parsed.api_key || parsed.apiKey) as string;
+        }
+        if (parsed.client_email && parsed.private_key) {
+          isServiceAccount = true;
+          const tokenRes = await exchangeServiceAccountToken({
+            client_email: String(parsed.client_email),
+            private_key: String(parsed.private_key),
+          });
+          if (tokenRes.success && tokenRes.accessToken) {
+            accessToken = tokenRes.accessToken;
+          } else {
+            serviceAccountAuthError = tokenRes.error || "Token exchange failed";
+          }
+        } else if (isServiceAccount) {
+          serviceAccountAuthError = "Service account JSON is missing required 'client_email' or 'private_key' field.";
+        }
+        if (parsed.secret) {
+          const subSecret = String(parsed.secret).trim();
+          if (subSecret.startsWith("AIza")) apiKey = subSecret;
+          else if (subSecret.startsWith("Bearer ")) accessToken = subSecret.replace(/^Bearer\s+/i, "");
+          else accessToken = subSecret;
+        }
+      } catch (err: unknown) {
+        if (isServiceAccount) {
+          serviceAccountAuthError = `Malformed service account JSON: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+    } else if (isServiceAccount) {
+      serviceAccountAuthError = "Credential value is not valid JSON.";
+    }
+
+    if (isServiceAccount && !accessToken) {
+      return {
+        status: "failed",
+        error: `GOOGLE_SHEETS_AUTH_FAILED: Google Service Account authentication failed. ${serviceAccountAuthError || "Unable to acquire OAuth token."}`,
+      };
+    }
+
+    if (!apiKey && !accessToken) {
+      if (secretStr.startsWith("AIza")) {
+        apiKey = secretStr;
+      } else if (secretStr.startsWith("Bearer ")) {
+        accessToken = secretStr.replace(/^Bearer\s+/i, "").trim();
+      } else if (secretStr.startsWith("ya29.")) {
+        accessToken = secretStr.trim();
+      } else {
+        apiKey = secretStr;
+      }
+    }
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    if (accessToken) {
+      headers["Authorization"] = `Bearer ${accessToken.replace(/^Bearer\s+/i, "")}`;
     }
 
     try {
       if (operation === "append_row") {
         let valuesArray: unknown[] = [];
         if (rowValues) {
-          try {
-            valuesArray = JSON.parse(rowValues);
-            if (!Array.isArray(valuesArray)) valuesArray = [rowValues];
-          } catch {
-            valuesArray = rowValues.split(",").map((s) => s.trim());
+          const trimmed = rowValues.trim();
+          if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+            try {
+              valuesArray = JSON.parse(trimmed);
+            } catch {
+              valuesArray = trimmed.split(",").map((s) => s.trim());
+            }
+          } else if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            try {
+              const obj = JSON.parse(trimmed);
+              valuesArray = Object.values(obj);
+            } catch {
+              valuesArray = [trimmed];
+            }
+          } else {
+            valuesArray = trimmed.split(",").map((s) => s.trim());
           }
         } else if (Array.isArray(input.rowValues)) {
           valuesArray = input.rowValues;
+        } else if (Array.isArray(input.rows)) {
+          valuesArray = input.rows;
+        } else if (input.body || input.text || input.message) {
+          valuesArray = [input.body || input.text || input.message];
         } else {
           valuesArray = [new Date().toISOString(), "Neuraloop Execution", JSON.stringify(input)];
         }
 
-        const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}:append?valueInputOption=USER_ENTERED&key=${apiKeyOrToken}`;
+        if (!Array.isArray(valuesArray)) {
+          valuesArray = [valuesArray];
+        }
+
+        let appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(sheetName)}:append?valueInputOption=USER_ENTERED`;
+        if (apiKey && !accessToken) {
+          appendUrl += `&key=${encodeURIComponent(apiKey)}`;
+        }
+
         const res = await fetch(appendUrl, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(apiKeyOrToken.startsWith("ya29.") || apiKeyOrToken.startsWith("Bearer ")
-              ? { Authorization: `Bearer ${apiKeyOrToken.replace("Bearer ", "")}` }
-              : {}),
-          },
+          headers,
           body: JSON.stringify({
             values: [valuesArray],
           }),
@@ -88,22 +201,23 @@ export const GoogleSheetsExecutor: NodeExecutor = {
             appended: true,
             spreadsheetId,
             sheetName,
-            updatedRange: data.updates?.updatedRange,
+            updatedRange: data.updates?.updatedRange || `${sheetName}!A1`,
             updatedRows: data.updates?.updatedRows || 1,
+            updatedCells: data.updates?.updatedCells || valuesArray.length,
             rowValues: valuesArray,
           },
         };
       } else {
         // Default: read_rows
-        const fullRange = `${sheetName}!${range}`;
-        const readUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(fullRange)}?key=${apiKeyOrToken}`;
+        const fullRange = range ? `${sheetName}!${range}` : sheetName;
+        let readUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(fullRange)}`;
+        if (apiKey && !accessToken) {
+          readUrl += `?key=${encodeURIComponent(apiKey)}`;
+        }
+
         const res = await fetch(readUrl, {
           method: "GET",
-          headers: {
-            ...(apiKeyOrToken.startsWith("ya29.") || apiKeyOrToken.startsWith("Bearer ")
-              ? { Authorization: `Bearer ${apiKeyOrToken.replace("Bearer ", "")}` }
-              : {}),
-          },
+          headers,
         });
 
         const data = await res.json();
@@ -120,8 +234,9 @@ export const GoogleSheetsExecutor: NodeExecutor = {
           output: {
             spreadsheetId,
             sheetName,
-            range: data.range,
+            range: data.range || fullRange,
             totalRows: rows.length,
+            rowCount: rows.length,
             rows,
             header: rows.length > 0 ? rows[0] : [],
           },

@@ -8,13 +8,16 @@ interface RouteParams {
 }
 
 export async function POST(_request: Request, { params }: RouteParams) {
-  const { userId, errorResponse } = await requireAuthUser();
+  const { userId, orgId, errorResponse } = await requireAuthUser();
   if (errorResponse) return errorResponse;
 
   try {
     const { id } = await params;
     const credRecord = await prisma.credential.findFirst({
-      where: { id, userId },
+      where: {
+        id,
+        OR: orgId ? [{ userId }, { organizationId: orgId }] : [{ userId }],
+      },
     });
 
     if (!credRecord) {
@@ -24,7 +27,7 @@ export async function POST(_request: Request, { params }: RouteParams) {
       );
     }
 
-    const decrypted = await CredentialService.getDecryptedCredential(id, userId);
+    const decrypted = await CredentialService.getDecryptedCredential(id, userId, orgId);
     if (!decrypted) {
       return NextResponse.json(
         { success: false, message: "Unable to decrypt credential secret." },

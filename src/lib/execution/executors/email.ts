@@ -24,6 +24,7 @@ export const EmailExecutor: NodeExecutor = {
         const resolved = await CredentialService.getDecryptedCredential(
           config.credentialId as string,
           context.userId || undefined,
+          context.organizationId || undefined,
         );
         if (resolved) {
           if (resolved.secret) smtpPass = resolved.secret;

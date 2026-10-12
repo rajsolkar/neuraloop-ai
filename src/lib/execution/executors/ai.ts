@@ -31,6 +31,7 @@ export const AIExecutor: NodeExecutor = {
         const cred = await CredentialService.getDecryptedCredential(
           credentialId,
           context.userId || undefined,
+          context.organizationId || undefined,
         );
         if (cred && cred.secret) {
           secret = cred.secret.trim();

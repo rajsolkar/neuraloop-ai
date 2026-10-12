@@ -16,7 +16,11 @@ export const SlackExecutor: NodeExecutor = {
     let slackToken = process.env.SLACK_BOT_TOKEN;
 
     if (config.credentialId) {
-      const resolved = await CredentialService.getDecryptedCredential(config.credentialId as string, context.userId);
+      const resolved = await CredentialService.getDecryptedCredential(
+        config.credentialId as string,
+        context.userId,
+        context.organizationId,
+      );
       if (resolved?.secret) {
         slackToken = resolved.secret;
       }

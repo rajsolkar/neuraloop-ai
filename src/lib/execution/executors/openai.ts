@@ -14,7 +14,11 @@ export const OpenAiExecutor: NodeExecutor = {
     let apiKey = process.env.OPENAI_API_KEY;
 
     if (config.credentialId) {
-      const resolved = await CredentialService.getDecryptedCredential(config.credentialId as string, context.userId);
+      const resolved = await CredentialService.getDecryptedCredential(
+        config.credentialId as string,
+        context.userId,
+        context.organizationId,
+      );
       if (resolved?.secret) {
         apiKey = resolved.secret;
       }

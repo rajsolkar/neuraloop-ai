@@ -484,6 +484,14 @@ export function CredentialSelect({
     if (req === "openai" || req === "anthropic" || req === "gemini") {
       return p === req || p === "openai" || p === "anthropic" || p === "gemini" || p === "custom";
     }
+    if (req === "google-sheets") {
+      return (
+        p === "google-sheets" ||
+        p === "google-sheets-service-account" ||
+        p === "google-service-account" ||
+        p === "custom"
+      );
+    }
     return p === req || p === "custom";
   });
 
@@ -517,7 +525,7 @@ export function CredentialSelect({
       <CreateCredentialDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        defaultProvider={provider}
+        defaultProvider={provider === "google-sheets" ? "google-sheets-service-account" : provider}
         onSuccess={(newCred) => {
           loadCredentials();
           onChange(newCred.id);

@@ -47,7 +47,11 @@ export const TelegramExecutor: NodeExecutor = {
 
     let botToken = process.env.TELEGRAM_BOT_TOKEN || "";
     if (config.credentialId) {
-      const resolved = await CredentialService.getDecryptedCredential(config.credentialId as string, context.userId);
+      const resolved = await CredentialService.getDecryptedCredential(
+        config.credentialId as string,
+        context.userId,
+        context.organizationId,
+      );
       if (resolved?.secret) {
         botToken = resolved.secret;
       }

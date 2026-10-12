@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
 import type { Prisma } from "@prisma/client";
+import { validateServiceAccountJson, exchangeServiceAccountToken } from "./service-account";
 
 const ALGORITHM = "aes-256-gcm";
 const ENCRYPTION_KEY = process.env.CREDENTIAL_ENCRYPTION_KEY || "neuraloop-default-secret-key-32b!"; // 32 bytes
@@ -35,6 +36,16 @@ export function decryptSecret(encryptedCombined: string, ivHex: string): string 
 export function maskSecret(secret: string): string {
   if (!secret) return "••••••••";
   const trimmed = secret.trim();
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed.client_email && typeof parsed.client_email === "string") {
+        return `sa:${parsed.client_email}`;
+      }
+    } catch {
+      // Fallback to standard masking
+    }
+  }
   if (trimmed.length <= 4) return "••••••••";
   return `••••••••${trimmed.slice(-4)}`;
 }
@@ -101,8 +112,22 @@ export class CredentialService {
       throw new Error("UNAUTHORIZED: Only workspace admins or owners can create shared credentials.");
     }
 
-    const { encryptedValue, iv } = encryptSecret(input.value);
     const providerClean = input.provider.toLowerCase().trim();
+    let metadataToSave = input.metadata || null;
+
+    if (
+      providerClean === "google-sheets-service-account" ||
+      providerClean === "google-service-account"
+    ) {
+      const sa = validateServiceAccountJson(input.value);
+      metadataToSave = {
+        ...(metadataToSave || {}),
+        clientEmail: sa.client_email,
+        projectId: sa.project_id,
+      };
+    }
+
+    const { encryptedValue, iv } = encryptSecret(input.value);
 
     const record = await prisma.credential.create({
       data: {
@@ -112,7 +137,7 @@ export class CredentialService {
         provider: providerClean,
         encryptedValue,
         iv,
-        metadata: (input.metadata || null) as unknown as Prisma.InputJsonValue,
+        metadata: (metadataToSave || null) as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -164,12 +189,24 @@ export class CredentialService {
     const updateData: Prisma.CredentialUpdateInput = {};
     if (input.name) updateData.name = input.name.trim();
     if (input.provider) updateData.provider = input.provider.toLowerCase().trim();
-    if (input.metadata !== undefined) {
-      updateData.metadata = (input.metadata || null) as unknown as Prisma.InputJsonValue;
-    }
+
+    const targetProvider = (input.provider ? input.provider.toLowerCase().trim() : existing.provider) || "";
+    let metadataToSave = input.metadata;
 
     let secretForMasking = "";
     if (input.value && input.value.trim()) {
+      if (
+        targetProvider === "google-sheets-service-account" ||
+        targetProvider === "google-service-account"
+      ) {
+        const sa = validateServiceAccountJson(input.value);
+        metadataToSave = {
+          ...(metadataToSave || (existing.metadata as Record<string, unknown>) || {}),
+          clientEmail: sa.client_email,
+          projectId: sa.project_id,
+        };
+      }
+
       const { encryptedValue, iv } = encryptSecret(input.value);
       updateData.encryptedValue = encryptedValue;
       updateData.iv = iv;
@@ -180,6 +217,10 @@ export class CredentialService {
       } catch {
         secretForMasking = "";
       }
+    }
+
+    if (metadataToSave !== undefined) {
+      updateData.metadata = (metadataToSave || null) as unknown as Prisma.InputJsonValue;
     }
 
     const updated = await prisma.credential.update({
@@ -239,27 +280,52 @@ export class CredentialService {
     orgId?: string | null,
   ): Promise<{
     secret: string;
+    provider?: string;
+    name?: string;
     metadata: Record<string, unknown> | null;
   } | null> {
-    const whereClause = orgId
-      ? { id, organizationId: orgId }
-      : (userId ? { id, userId } : { id });
+    const cleanUserId = userId?.trim() || null;
+    const cleanOrgId = orgId?.trim() || null;
+
+    if (!cleanUserId && !cleanOrgId) {
+      // Authorization boundary: credentials cannot be accessed without user or organization context
+      return null;
+    }
+
+    const conditions: Prisma.CredentialWhereInput[] = [];
+    if (cleanOrgId) {
+      conditions.push({ organizationId: cleanOrgId });
+    }
+    if (cleanUserId) {
+      conditions.push({ userId: cleanUserId });
+    }
+
     const record = await prisma.credential.findFirst({
-      where: whereClause,
+      where: {
+        id,
+        OR: conditions,
+      },
     });
+
     if (!record) return null;
 
-    // Async usage timestamp update without blocking execution loop
-    this.touchLastUsed(record.id).catch(() => {});
+    // Throttle lastUsedAt updates to once every 60 seconds to prevent connection pool exhaustion
+    const isStale = !record.lastUsedAt || Date.now() - new Date(record.lastUsedAt).getTime() > 60_000;
+    if (isStale) {
+      this.touchLastUsed(record.id).catch(() => {});
+    }
 
     const secret = decryptSecret(record.encryptedValue, record.iv);
     return {
       secret,
+      provider: record.provider,
+      name: record.name,
       metadata: record.metadata as Record<string, unknown> | null,
     };
   }
 
   static async touchLastUsed(id: string): Promise<void> {
+    if (!process.env.DATABASE_URL) return;
     try {
       await prisma.credential.update({
         where: { id },
@@ -348,7 +414,53 @@ export class CredentialService {
           }
           return { success: true, message: "Discord Webhook URL format validated successfully." };
         }
+        case "google-sheets-service-account":
+        case "google-service-account": {
+          let sa: { client_email: string; private_key: string };
+          try {
+            sa = validateServiceAccountJson(cleanSecret);
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return { success: false, message: msg };
+          }
+
+          const tokenRes = await exchangeServiceAccountToken(sa);
+          if (tokenRes.success) {
+            return {
+              success: true,
+              message: `Successfully authenticated Google Service Account (${sa.client_email}).`,
+            };
+          }
+          return {
+            success: false,
+            message: `Google Service Account authentication failed: ${tokenRes.error}`,
+          };
+        }
         case "google-sheets": {
+          if (cleanSecret.startsWith("{")) {
+            try {
+              const sa = validateServiceAccountJson(cleanSecret);
+              const tokenRes = await exchangeServiceAccountToken(sa);
+              if (tokenRes.success) {
+                return {
+                  success: true,
+                  message: `Successfully authenticated Google Service Account (${sa.client_email}).`,
+                };
+              }
+              return {
+                success: false,
+                message: `Google Service Account authentication failed: ${tokenRes.error}`,
+              };
+            } catch {
+              return { success: false, message: "Invalid JSON format for Google Sheets credential." };
+            }
+          }
+          if (cleanSecret.startsWith("AIza")) {
+            return { success: true, message: "Google Sheets API key format validated successfully." };
+          }
+          if (cleanSecret.startsWith("ya29.") || cleanSecret.startsWith("Bearer ")) {
+            return { success: true, message: "Google Sheets OAuth token format validated successfully." };
+          }
           return { success: true, message: "Google Sheets credential format validated successfully." };
         }
         case "smtp": {

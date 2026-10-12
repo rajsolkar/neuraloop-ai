@@ -16,7 +16,11 @@ export const DiscordExecutor: NodeExecutor = {
     const contentRaw = (config.content as string) || (config.message as string) || (input.content as string) || "Neuraloop Event Notification";
 
     if (config.credentialId) {
-      const resolved = await CredentialService.getDecryptedCredential(config.credentialId as string, context.userId);
+      const resolved = await CredentialService.getDecryptedCredential(
+        config.credentialId as string,
+        context.userId,
+        context.organizationId,
+      );
       if (resolved?.secret) {
         webhookUrl = resolved.secret;
       }
