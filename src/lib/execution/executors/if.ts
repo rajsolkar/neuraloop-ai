@@ -1,6 +1,6 @@
 import type { WorkflowNode } from "@/types/workflow";
 import type { ExecutionContext, NodeExecutionResult, NodeExecutor } from "../types";
-import { resolvePropertyPath } from "../expression";
+import { resolvePropertyPath, buildExecutionExpressionContext } from "../expression";
 import { resolveVariables } from "@/lib/variables/resolve-variable";
 
 export const IfExecutor: NodeExecutor = {
@@ -14,7 +14,7 @@ export const IfExecutor: NodeExecutor = {
     const condition = (config.condition as Record<string, unknown>) ?? {};
     const mode = (condition.mode as string) || (config.mode as string) || "basic";
 
-    const mergedData = { ...context.input, ...input, ...context.nodeOutputs };
+    const mergedData = buildExecutionExpressionContext(context, input);
     let evaluatedResult = false;
     let fieldPath = "";
     let operator = "equals";

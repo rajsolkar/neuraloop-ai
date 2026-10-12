@@ -34,13 +34,33 @@ export class TemplateCloner {
       nodeIdMap.set(node.id, `n-${makeId("cloned")}`);
     });
 
-    // Deep clone nodes with regenerated IDs
+    // Deep clone nodes with regenerated IDs and sanitized credentials
     const clonedNodes: WorkflowNode[] = rawNodes.map((node) => {
       const newNodeId = nodeIdMap.get(node.id) || `n-${makeId("cloned")}`;
-      const clonedData = JSON.parse(JSON.stringify(node.data || {}));
-      
+      let dataJson = JSON.stringify(node.data || {});
+
+      // Remap any references to old node IDs inside expressions (e.g. steps.node-ai-1.text -> steps.n-cloned-xxx.text)
+      for (const [oldId, remappedId] of nodeIdMap.entries()) {
+        dataJson = dataJson.replaceAll(oldId, remappedId);
+      }
+
+      const clonedData = JSON.parse(dataJson);
+
       // Clear last execution status on fresh cloned canvas
       delete clonedData.lastExecutionStatus;
+
+      // Ensure credential IDs and embedded secrets are wiped clean so user configures their own
+      if (clonedData.config && typeof clonedData.config === "object") {
+        if ("credentialId" in clonedData.config) {
+          clonedData.config.credentialId = "";
+        }
+        if ("bearerToken" in clonedData.config && clonedData.config.authType === "bearer") {
+          clonedData.config.bearerToken = "";
+        }
+        if ("apiKeyValue" in clonedData.config && clonedData.config.authType === "api_key") {
+          clonedData.config.apiKeyValue = "";
+        }
+      }
 
       return {
         ...node,

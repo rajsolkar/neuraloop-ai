@@ -1,10 +1,10 @@
-import { WorkflowsView } from "@/components/workspace/workflow-list-view";
+import { Suspense } from "react";
+import { StarterGalleryView } from "@/components/dashboard/starter-gallery-view";
 
 export default function WorkflowsPage() {
   return (
-    <WorkflowsView
-      heading="My Workflows"
-      description="All your workflows, in one place."
-    />
+    <Suspense fallback={<div className="p-8 text-xs text-ink-faint">Loading Neuraloop Dashboard...</div>}>
+      <StarterGalleryView />
+    </Suspense>
   );
 }

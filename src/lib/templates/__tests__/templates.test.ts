@@ -91,7 +91,7 @@ describe("Phase 14: Template Marketplace & One-Click Cloning Test Suite", () => 
       });
 
       expect(result.templates).toBeDefined();
-      if (result.templates.length > 0) {
+      if (result.templates.length > 0 && result.templates[0]) {
         expect(result.templates[0].category.toLowerCase()).toBe("ai");
       }
     });

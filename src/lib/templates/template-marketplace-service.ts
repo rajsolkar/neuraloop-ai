@@ -57,9 +57,9 @@ export class TemplateMarketplaceService {
 
     let filtered = baseList.templates;
     if (filter === "official") {
-      filtered = filtered.filter((t) => t.isOfficial);
+      filtered = filtered.filter((t) => Boolean(t && t.isOfficial));
     } else if (filter === "community") {
-      filtered = filtered.filter((t) => !t.isOfficial);
+      filtered = filtered.filter((t) => Boolean(t && !t.isOfficial));
     }
 
     // Attach favorite status if userId provided
@@ -73,7 +73,7 @@ export class TemplateMarketplaceService {
     }
 
     return {
-      templates: filtered.map((t) => ({
+      templates: filtered.filter(Boolean).map((t) => ({
         ...t,
         isFavorite: favSet.has(t.id),
       })),

@@ -18,7 +18,9 @@ export async function GET(request: Request) {
     const featuredParam = url.searchParams.get("featured");
     const pageParam = url.searchParams.get("page");
     const limitParam = url.searchParams.get("limit");
+    const startersParam = url.searchParams.get("starters") || url.searchParams.get("startersOnly");
 
+    const startersOnly = startersParam === "true";
     const featured = featuredParam !== null ? featuredParam === "true" : undefined;
     const page = pageParam ? parseInt(pageParam, 10) : 1;
     const limit = limitParam ? parseInt(limitParam, 10) : 20;
@@ -27,6 +29,7 @@ export async function GET(request: Request) {
       search,
       category,
       featured,
+      startersOnly,
       page,
       limit,
       userId,

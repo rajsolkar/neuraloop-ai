@@ -7,6 +7,8 @@ import {
   FolderKanban,
   MoreHorizontal,
   Trash2,
+  KeyRound,
+  CheckCircle2,
 } from "lucide-react";
 import { useWorkflowStore } from "@/store/workflow-store";
 import { useToastStore } from "@/store/toast-store";
@@ -49,6 +51,18 @@ export function WorkflowCard({
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const nodeCount = workflow.nodes.length;
+
+  // Check if any nodes require external credentials and whether they are set up
+  const credentialRequiringNodes = workflow.nodes.filter((n) => {
+    const defId = n.data?.definitionId;
+    return ["ai", "openai", "telegram", "email", "google-sheets"].includes(defId);
+  });
+  const unconfiguredCount = credentialRequiringNodes.filter((n) => {
+    const config = (n.data?.config as Record<string, unknown>) ?? {};
+    return !config.credentialId;
+  }).length;
+  const needsCredentials = credentialRequiringNodes.length > 0 && unconfiguredCount > 0;
+  const fullyConfigured = credentialRequiringNodes.length > 0 && unconfiguredCount === 0;
 
   const handleDuplicate = () => {
     void duplicateWorkflow(workflow.id);
@@ -122,7 +136,7 @@ export function WorkflowCard({
         </Link>
 
         <div className="flex items-center justify-between gap-2 text-xs text-ink-faint">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Badge
               variant={
                 workflow.status === "published"
@@ -138,6 +152,24 @@ export function WorkflowCard({
               <FolderKanban className="h-3 w-3" />
               {nodeCount} {nodeCount === 1 ? "node" : "nodes"}
             </span>
+            {needsCredentials && (
+              <span
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-500/10 border border-amber-300 rounded-md px-1.5 py-0.5"
+                title={`${unconfiguredCount} node(s) require credential setup before execution`}
+              >
+                <KeyRound className="h-3 w-3 text-amber-600" />
+                Setup Needed
+              </span>
+            )}
+            {fullyConfigured && (
+              <span
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-500/10 border border-emerald-300 rounded-md px-1.5 py-0.5"
+                title="All credentials configured"
+              >
+                <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                Credentials Ready
+              </span>
+            )}
           </div>
           <span className="shrink-0 whitespace-nowrap">
             Edited {formatRelativeDate(workflow.updatedAt)}

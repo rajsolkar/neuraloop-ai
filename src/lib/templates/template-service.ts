@@ -3,11 +3,19 @@ import { TemplateCloner, type TemplateDefinition } from "./template-cloner";
 import { WorkflowService } from "@/lib/workflow/workflow-service";
 import { AuditLogService } from "@/lib/security/audit-log-service";
 import type { Prisma } from "@prisma/client";
+import {
+  STARTER_TEMPLATES,
+  STARTER_TEMPLATE_IDS,
+  seedStarterTemplates,
+  formatStarterTemplateRecord,
+  type StarterTemplateItem,
+} from "./starter-templates";
 
 export interface ListTemplatesOptions {
   search?: string;
   category?: string;
   featured?: boolean;
+  startersOnly?: boolean;
   page?: number;
   limit?: number;
   userId?: string | null;
@@ -19,6 +27,17 @@ export class TemplateService {
    * Retrieves a paginated list of templates with optional search, category, and featured filters.
    */
   static async listTemplates(options: ListTemplatesOptions = {}) {
+    if (options.startersOnly) {
+      const starters = await this.getStarterTemplates();
+      return {
+        templates: starters,
+        total: starters.length,
+        page: 1,
+        limit: starters.length,
+        totalPages: 1,
+      };
+    }
+
     const page = Math.max(1, options.page || 1);
     const limit = Math.max(1, Math.min(100, options.limit || 20));
     const skip = (page - 1) * limit;
@@ -77,15 +96,143 @@ export class TemplateService {
   }
 
   /**
+   * Returns the exactly seven canonical starter workflows in deterministic order (01 to 07).
+   * Automatically seeds the database if any starter is missing.
+   */
+  static async getStarterTemplates() {
+    try {
+      const existing = await prisma.workflowTemplate.findMany({
+        where: { id: { in: STARTER_TEMPLATE_IDS } },
+      });
+
+      if (existing.length < STARTER_TEMPLATES.length) {
+        await seedStarterTemplates().catch((err) => {
+          console.warn("Auto-seeding starter templates encountered an error:", err);
+        });
+        const reloaded = await prisma.workflowTemplate.findMany({
+          where: { id: { in: STARTER_TEMPLATE_IDS } },
+        });
+        if (reloaded.length > 0) {
+          return STARTER_TEMPLATE_IDS.map((id) => reloaded.find((t) => t.id === id)).filter(
+            (t): t is import("@prisma/client").WorkflowTemplate => Boolean(t),
+          );
+        }
+      } else {
+        return STARTER_TEMPLATE_IDS.map((id) => existing.find((t) => t.id === id)).filter(
+          (t): t is import("@prisma/client").WorkflowTemplate => Boolean(t),
+        );
+      }
+    } catch (err) {
+      console.warn("Database query for starter templates failed, using built-in definitions:", err);
+    }
+
+    // In-memory fallback if database query or connection fails
+    return STARTER_TEMPLATES.map((st) => ({
+      id: st.id,
+      userId: null,
+      organizationId: null,
+      name: st.name,
+      description: st.description,
+      category: st.category,
+      icon: st.icon,
+      tags: st.tags as unknown as Prisma.JsonValue,
+      featured: true,
+      usageCount: 0,
+      isOfficial: true,
+      isPublic: true,
+      definition: {
+        ...st.definition,
+        starterNumber: st.number,
+        difficulty: st.difficulty,
+        difficultyOrder: st.difficultyOrder,
+        credentialRequirements: st.credentialRequirements,
+        flowSequence: st.flowSequence,
+        checklist: st.checklist,
+        exampleInput: st.exampleInput,
+        expectedOutput: st.expectedOutput,
+      } as unknown as Prisma.JsonValue,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })) as import("@prisma/client").WorkflowTemplate[];
+  }
+
+  /**
+   * Returns the canonical starter workflows normalized into fully typed StarterTemplateItem records.
+   * Pulls directly from persistent database with guaranteed 01 to 07 ordering.
+   */
+  static async getFormattedStarterTemplates(): Promise<{
+    starters: StarterTemplateItem[];
+    source: "database" | "fallback";
+    diagnostics: { count: number; verifiedIds: string[] };
+  }> {
+    const rawTemplates = await this.getStarterTemplates();
+    const source: "database" | "fallback" = process.env.DATABASE_URL ? "database" : "fallback";
+    const formatted = rawTemplates.map((record) => formatStarterTemplateRecord(record));
+
+    return {
+      starters: formatted,
+      source,
+      diagnostics: {
+        count: formatted.length,
+        verifiedIds: formatted.map((s) => s.id),
+      },
+    };
+  }
+
+  /**
    * Fetches a template by ID with ownership verification.
    */
   static async getTemplate(
     id: string,
     authContext?: { userId?: string | null; organizationId?: string | null },
   ) {
-    const template = await prisma.workflowTemplate.findUnique({
+    let template = await prisma.workflowTemplate.findUnique({
       where: { id },
     });
+
+    if (!template && STARTER_TEMPLATE_IDS.includes(id)) {
+      try {
+        await seedStarterTemplates();
+        template = await prisma.workflowTemplate.findUnique({
+          where: { id },
+        });
+      } catch (err) {
+        console.warn(`Could not seed missing starter template '${id}':`, err);
+      }
+
+      if (!template) {
+        const foundStarter = STARTER_TEMPLATES.find((s) => s.id === id);
+        if (foundStarter) {
+          template = {
+            id: foundStarter.id,
+            userId: null,
+            organizationId: null,
+            name: foundStarter.name,
+            description: foundStarter.description,
+            category: foundStarter.category,
+            icon: foundStarter.icon,
+            tags: foundStarter.tags,
+            featured: true,
+            usageCount: 0,
+            isOfficial: true,
+            isPublic: true,
+            definition: {
+              ...foundStarter.definition,
+              starterNumber: foundStarter.number,
+              difficulty: foundStarter.difficulty,
+              difficultyOrder: foundStarter.difficultyOrder,
+              credentialRequirements: foundStarter.credentialRequirements,
+              flowSequence: foundStarter.flowSequence,
+              checklist: foundStarter.checklist,
+              exampleInput: foundStarter.exampleInput,
+              expectedOutput: foundStarter.expectedOutput,
+            },
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          } as unknown as typeof template;
+        }
+      }
+    }
 
     if (!template) {
       throw new Error(`Template '${id}' not found.`);

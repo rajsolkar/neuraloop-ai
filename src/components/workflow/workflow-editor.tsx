@@ -15,7 +15,7 @@ import { useEditorShortcuts } from "@/components/workflow/canvas/use-editor-shor
 import { useEditorStore } from "@/store/editor-store";
 import { useToastStore } from "@/store/toast-store";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, LayoutPanelLeft, Search, Eye, Maximize2, X } from "lucide-react";
+import { ArrowLeft, LayoutPanelLeft, Search, Eye, Maximize2, X, KeyRound } from "lucide-react";
 import type { WorkflowNode, WorkflowEdge } from "@/types/workflow";
 import { createWorkflowNode } from "@/lib/workflow";
 import { cn } from "@/lib/utils";
@@ -48,6 +48,17 @@ function EditorInner({ workflowId }: { workflowId: string }) {
   const [focusMode, setFocusMode] = useState(false);
   const [presentationMode, setPresentationMode] = useState(false);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+  const [credentialBannerDismissed, setCredentialBannerDismissed] = useState(false);
+
+  const unconfiguredCredNodes = nodes.filter((n) => {
+    const defId = n.data?.definitionId;
+    if (["ai", "openai", "telegram", "email", "google-sheets"].includes(defId)) {
+      const config = (n.data?.config as Record<string, unknown>) ?? {};
+      return !config.credentialId;
+    }
+    return false;
+  });
+  const showCredentialBanner = !credentialBannerDismissed && unconfiguredCredNodes.length > 0;
 
   const { screenToFlowPosition } = useReactFlow();
 
@@ -162,6 +173,35 @@ function EditorInner({ workflowId }: { workflowId: string }) {
         )}
 
         <main className="relative min-w-0 flex-1 flex flex-col">
+          {showCredentialBanner && (
+            <div className="flex items-center justify-between border-b border-amber-300 bg-amber-50/95 px-4 py-2 text-xs text-amber-900 shadow-2xs z-20">
+              <div className="flex items-center gap-2">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-800">
+                  <KeyRound className="h-3 w-3" />
+                </span>
+                <span>
+                  <strong>Credentials Setup Required:</strong> {unconfiguredCredNodes.length} node{unconfiguredCredNodes.length > 1 ? "s" : ""} in this workflow need external credentials before running. Select a node to configure keys in the Inspector.
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs text-amber-800 hover:bg-amber-100"
+                  onClick={() => setInspectorCollapsed(false)}
+                >
+                  Open Inspector
+                </Button>
+                <button
+                  onClick={() => setCredentialBannerDismissed(true)}
+                  className="text-amber-700 hover:text-amber-900 p-0.5 cursor-pointer"
+                  aria-label="Dismiss banner"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
           <div className="relative flex-1">
             <WorkflowCanvas
               flowContainerRef={flowRef}
