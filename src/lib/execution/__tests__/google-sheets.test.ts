@@ -574,5 +574,101 @@ describe("Google Sheets Executor Unit Test Suite", () => {
     expect(result.error).toContain("GOOGLE_SHEETS_READ_FAILED (HTTP 404)");
     expect(result.error).toContain("Requested entity was not found.");
   });
+
+  it("18. Production Bug Regression: Selected Google Service Account Credential Resolves & Executes Without Being Reported Missing", async () => {
+    const { generateKeyPairSync } = await import("crypto");
+    const { privateKey } = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    });
+
+    const saJson = JSON.stringify({
+      type: "service_account",
+      project_id: "universal-sun-498307-n1",
+      private_key_id: "key-prod-123",
+      private_key: privateKey,
+      client_email: "name-neuraloop-sheets@universal-sun-498307-n1.iam.gserviceaccount.com",
+    });
+
+    const prodContext: ExecutionContext = {
+      ...dummyContext,
+      userId: "user_3JPa0w00XFNggDaWthLQGxL4cPa",
+      organizationId: null,
+    };
+
+    // Node configuration exactly matches the production node configuration
+    const prodNode = createSheetsNode({
+      credentialId: "2e0299cc-cb39-4bb0-b5fe-20c758d50b03",
+      spreadsheetId: "1r9vcPd3hB9rqE45m3F7MymOUGhXAl1ssdcnP7pBlq7k",
+      sheetName: "Sheet1",
+      range: "A1:Z100",
+      operation: "read_rows",
+    });
+
+    const getCredSpy = vi.spyOn(CredentialService, "getDecryptedCredential").mockResolvedValue({
+      secret: saJson,
+      provider: "google-sheets-service-account",
+      name: "Sheets JSON Cred",
+      metadata: {
+        projectId: "universal-sun-498307-n1",
+        clientEmail: "name-neuraloop-sheets@universal-sun-498307-n1.iam.gserviceaccount.com",
+      },
+    });
+
+    let tokenExchanged = false;
+    let sheetsCalledWithBearer = false;
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url: string | URL | Request, init?: RequestInit) => {
+      const urlStr = String(url);
+      if (urlStr.includes("oauth2.googleapis.com/token")) {
+        tokenExchanged = true;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            access_token: "ya29.prod-service-account-token",
+            expires_in: 3600,
+            token_type: "Bearer",
+          }),
+        } as Response;
+      }
+
+      if (urlStr.includes("sheets.googleapis.com")) {
+        const authHeader = (init?.headers as Record<string, string>)?.[
+          "Authorization"
+        ];
+        if (authHeader === "Bearer ya29.prod-service-account-token") {
+          sheetsCalledWithBearer = true;
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            range: "Sheet1!A1:Z100",
+            values: [["Header1", "Header2"], ["Value1", "Value2"]],
+          }),
+        } as Response;
+      }
+
+      return { ok: false, status: 400, json: async () => ({}) } as Response;
+    });
+
+    const result = await GoogleSheetsExecutor.execute(prodNode, {}, prodContext);
+
+    // Verify credential lookup received production userId
+    expect(getCredSpy).toHaveBeenCalledWith(
+      "2e0299cc-cb39-4bb0-b5fe-20c758d50b03",
+      "user_3JPa0w00XFNggDaWthLQGxL4cPa",
+      null,
+    );
+
+    // Verify it succeeded without error
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe("success");
+    expect(tokenExchanged).toBe(true);
+    expect(sheetsCalledWithBearer).toBe(true);
+    expect(result.output?.rowCount).toBe(2);
+  });
 });
 

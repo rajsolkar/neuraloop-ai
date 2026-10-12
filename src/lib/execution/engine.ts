@@ -86,8 +86,16 @@ export class WorkflowEngine {
         if (dbVersion) {
           versionId = dbVersion.id;
           versionNumber = dbVersion.version;
-          ownerUserId = dbVersion.workflow.userId || ownerUserId;
-          ownerOrgId = dbVersion.workflow.organizationId || ownerOrgId;
+          ownerUserId = ownerUserId || dbVersion.workflow.userId || null;
+          ownerOrgId = ownerOrgId || dbVersion.workflow.organizationId || null;
+
+          if (!dbVersion.workflow.userId && ownerUserId) {
+            await prisma.workflow.update({
+              where: { id: dbVersion.workflowId },
+              data: { userId: ownerUserId },
+            }).catch(() => {});
+          }
+
           const def = dbVersion.definition as unknown as Record<string, unknown>;
           canonicalWorkflow = {
             id: dbVersion.workflowId,
@@ -100,6 +108,21 @@ export class WorkflowEngine {
             nodes: (def.nodes as unknown as Workflow["nodes"]) || [],
             edges: (def.edges as unknown as Workflow["edges"]) || [],
           };
+        }
+
+        if ((!ownerUserId || !ownerOrgId) && options.executionId) {
+          const dbExecution = await prisma.workflowExecution.findUnique({
+            where: { id: options.executionId },
+            select: { userId: true, organizationId: true },
+          });
+          if (dbExecution) {
+            if (!ownerUserId && dbExecution.userId) {
+              ownerUserId = dbExecution.userId;
+            }
+            if (!ownerOrgId && dbExecution.organizationId) {
+              ownerOrgId = dbExecution.organizationId;
+            }
+          }
         }
       } catch (err) {
         console.warn("Prisma fetch version failed in engine, falling back to service:", err);

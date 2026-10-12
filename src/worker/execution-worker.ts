@@ -19,7 +19,7 @@ export function createExecutionWorker(): Worker<ExecutionJobPayload> | null {
   const worker = new Worker<ExecutionJobPayload>(
     WORKFLOW_EXECUTION_QUEUE_NAME,
     async (job: Job<ExecutionJobPayload>) => {
-      const { executionId, workflowId, workflowVersionId, input, metadata } = job.data;
+      const { executionId, workflowId, workflowVersionId, userId, organizationId, input, metadata } = job.data;
       console.log(`[Worker] Processing execution job ${executionId} (Workflow ${workflowId}, Version ${workflowVersionId})`);
 
       // 1. Mark status running in Neon PostgreSQL if DB configured
@@ -40,8 +40,12 @@ export function createExecutionWorker(): Worker<ExecutionJobPayload> | null {
           workflowId,
           versionId: workflowVersionId,
           executionId,
+          userId: userId || (metadata?.userId as string) || null,
           input,
-          metadata,
+          metadata: {
+            ...(metadata || {}),
+            organizationId: organizationId || (metadata?.organizationId as string) || null,
+          },
         });
 
         if (executionRecord.status === "failed") {

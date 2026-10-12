@@ -303,6 +303,8 @@ export class WorkflowService {
 
         return {
           id: record.id,
+          userId: record.userId,
+          organizationId: record.organizationId,
           name: record.name,
           description: record.description,
           status: record.status as WorkflowStatus,
@@ -366,6 +368,10 @@ export class WorkflowService {
           updatedAt: now,
           savedAt: now,
         };
+
+        if (userId && !existing.userId) {
+          updateData.userId = userId;
+        }
 
         if (parsed.createVersion) {
           const latestVerRecord = await prisma.workflowVersion.findFirst({

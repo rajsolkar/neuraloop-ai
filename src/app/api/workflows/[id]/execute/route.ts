@@ -12,7 +12,7 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  const { userId, errorResponse } = await requireAuthUser();
+  const { userId, orgId, errorResponse } = await requireAuthUser();
   if (errorResponse) return errorResponse;
 
   // 1. Rate Limiting Protection (30 req/min per user)
@@ -29,12 +29,19 @@ export async function POST(
 
   const { id: workflowId } = await context.params;
   try {
-    const workflow = await WorkflowService.getWorkflow(workflowId, userId);
+    const workflow = await WorkflowService.getWorkflow(workflowId, userId, orgId);
     if (!workflow) {
       return NextResponse.json(
         { error: `WORKFLOW_NOT_FOUND: Workflow '${workflowId}' not found.` },
         { status: 404 },
       );
+    }
+
+    if (!workflow.userId && userId && process.env.DATABASE_URL) {
+      await prisma.workflow.update({
+        where: { id: workflowId },
+        data: { userId },
+      }).catch(() => {});
     }
 
     const telegramNode = workflow.nodes?.find((n) => n.data?.definitionId === "telegram");
@@ -112,6 +119,7 @@ export async function POST(
           data: {
             id: executionId,
             userId,
+            organizationId: orgId,
             workflowId,
             workflowVersionId: versionId,
             status: "queued",
@@ -134,6 +142,8 @@ export async function POST(
       executionId,
       workflowId,
       workflowVersionId: versionId,
+      userId,
+      organizationId: orgId,
       input,
       metadata,
     });

@@ -9,6 +9,8 @@ export interface ExecutionJobPayload {
   executionId: string;
   workflowId: string;
   workflowVersionId: string;
+  userId?: string | null;
+  organizationId?: string | null;
   input?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
   source?: ExecutionSource;
@@ -77,8 +79,12 @@ export async function enqueueExecution(payload: ExecutionJobPayload): Promise<{
         workflowId: payload.workflowId,
         versionId: payload.workflowVersionId,
         executionId: payload.executionId,
+        userId: payload.userId,
         input: payload.input,
-        metadata: payload.metadata,
+        metadata: {
+          ...(payload.metadata || {}),
+          organizationId: payload.organizationId || (payload.metadata?.organizationId as string | null),
+        },
       });
     } catch (err) {
       console.warn(`Background fallback execution ${payload.executionId} failed:`, err);
